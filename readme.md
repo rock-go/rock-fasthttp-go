@@ -85,8 +85,8 @@ r.GET("/info" ,
     "defaut_handle" --这个是查找公共库下的handle处理逻辑 ,一般为default_handle.lua
 )
 ```
-###函数说明 
-####1.路由配置
+### 函数说明 
+#### 1.路由配置
 - router.GET
 - router.HEAD
 - router.POST
@@ -103,7 +103,7 @@ r.GET("/info" ,
 - 参数 path： 代表路径的 完全兼容 fasthttp.router的路径语法 如:/api/{name}/{val:*}
 - 参数 handle: 就是用fasthttp.handle构造的对象
 
-####2. ctx周期变量的使用
+#### 2. ctx周期变量的使用
 - fasthttp.ctx.say(string...)
 ```lua
     local ctx = fasthttp.ctx
@@ -344,7 +344,7 @@ r.GET("/info" ,
     local sent = fasthttp.ctx.sent
 ```
 
-####handle配置
+#### 3.handle配置
 主要的业务处理逻辑 绑定之前注册路由
 ```lua
     local ctx = fasthttp.ctx
@@ -375,7 +375,7 @@ r.GET("/info" ,
         eof = true, 
     }
 ```
-#### handle 说明
+#### 4.handle 说明
 handle 下面调用方式
 ```lua
     -- 注册路由的时候直接创建
@@ -388,7 +388,7 @@ handle 下面调用方式
     r.GET("/get/useinfo" , function() end)
 ```
 
-#### handle 库定义
+#### 5.handle 库定义
 handle库的定义，一般是文件名调用 查找路径 setup 中的 handler
 例如下图中的handle
 ```lua
