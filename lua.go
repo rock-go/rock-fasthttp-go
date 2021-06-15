@@ -54,10 +54,5 @@ func LuaInjectApi(env xcall.Env) {
 	fs.Set("filter" , lua.NewFunction(newLuaFilter))
 	fs.Set("header" , lua.NewFunction(newLuaHeader))
 
-	fsJson := lua.NewUserKV()
-	fsJson.Set("decode" , lua.NewFunction(newLuaJsonDecode))
-	fsJson.Set("encode" , lua.NewFunction(newLuaJsonEncode))
-	fs.Set("json" , fsJson)
-
 	env.SetGlobal("fasthttp" , fs)
 }
