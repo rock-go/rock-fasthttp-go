@@ -8,6 +8,7 @@ import (
 	"github.com/rock-go/rock/logger"
 	"fmt"
 	"runtime/debug"
+	"github.com/rock-go/rock/region"
 )
 
 type RequestCtx = fasthttp.RequestCtx
@@ -22,10 +23,13 @@ type vRouter struct {
 	mtime  int64 //时间
 
 	//router中的命令
-	access         string
-	accessFormat   string
-	accessEncode   string
-	accessRegion   string
+	accessFormat    string
+	accessEncode    string
+	accessRegion    string
+	accessFn        func(ctx *RequestCtx) []byte
+
+	accessOutputSdk lua.Writer
+	accessRegionSdk *region.Region
 
 	//handler处理脚本路径
 	handler string
@@ -34,10 +38,38 @@ type vRouter struct {
 	r      *router.Router
 }
 
-func newRouter() *vRouter {
+func newRouter(co *lua.LState) *vRouter {
+	tab := co.CheckTable(1)
 	r := router.New()
 	r.PanicHandler = panicHandler
-	return &vRouter{r:router.New()}
+	v := &vRouter{
+		r:r,
+		accessFormat: "",
+		accessRegion: "",
+		accessEncode: "line",
+	}
+
+	tab.ForEach(func(key lua.LValue, val lua.LValue) {
+		switch key.String() {
+		case "access_format":
+			v.accessFormat = val.String()
+
+		case "access_encode":
+			v.accessEncode = val.String()
+
+		case "access_region":
+			v.accessRegion = val.String()
+
+		case "region":
+			v.accessRegionSdk = checkRegionSdk(co , val)
+
+		case "output":
+			v.accessOutputSdk = checkOutputSdk(co , val)
+		}
+	})
+
+	v.accessFn = compileAccessFormat(v.accessFormat , v.accessEncode)
+	return v
 }
 
 func panicHandler( ctx *RequestCtx , val interface{}) {
@@ -152,32 +184,8 @@ func (r *vRouter) Index(L *lua.LState , key string) lua.LValue {
 	return lua.LNil
 }
 
-func (r *vRouter) NewIndex(L *lua.LState , key string , val lua.LValue) {
-	switch key {
-
-	//获取地理位置
-	case "region":
-		r.accessRegion = val.String()
-
-	//修改日志路径
-	case "access":
-		r.access = val.String()
-
-	//修改日志格式
-	case "access_format":
-		r.accessFormat = val.String()
-
-	//修改日志编码
-	case "access_encode":
-		r.accessEncode = val.String()
-
-	default:
-		L.RaiseError("invalid %s key" , key)
-	}
-}
-
 func newLuaRouter(co *lua.LState) int {
-	r := newRouter()
+	r := newRouter(co)
 	co.D = r
 	co.Push(co.NewLightUserData(r))
 	return 1

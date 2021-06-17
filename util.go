@@ -9,6 +9,9 @@ import (
 	"os"
 	"time"
 	"strconv"
+	"strings"
+	"bytes"
+	"github.com/rock-go/rock/region"
 )
 
 func checkHandleChains(L *lua.LState) *HandleChains {
@@ -67,17 +70,19 @@ func checkRouter(L *lua.LState) (*vRouter, error) {
 	return r , nil
 }
 
-func checkRegionSdk(L *lua.LState , val lua.LValue) region {
+func checkRegionSdk(L *lua.LState , val lua.LValue) *region.Region {
 
 	switch val.Type() {
 	case lua.LTNil:
 		return nil
 
 	case lua.LTLightUserData:
-		r , ok := val.(*lua.LightUserData).Value.(region)
-		if ok {
-			return r
+		r , ok := val.(*lua.LightUserData).Value.(*region.Region)
+		if !ok {
+			L.RaiseError("invalid region sdk")
+			return nil
 		}
+		return r
 
 	default:
 		//todo
@@ -103,6 +108,82 @@ func checkOutputSdk(L *lua.LState , val lua.LValue) lua.Writer {
 
 	L.RaiseError("invalid output object , got %s" , val.Type().String())
 	return nil
+}
+
+func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte {
+	if format == "" || format == "off" {
+		return nil
+	}
+	format = strings.TrimSpace(format)
+
+	a := strings.Split(format , ",")
+	var fn func(ctx *RequestCtx) []byte
+	switch encode {
+	case "json":
+		fn = func(ctx *RequestCtx) []byte {
+			n := len(a)
+			if n == 0 {
+				return []byte("[]")
+			}
+
+			buff := lua.NewJsonBuffer("")
+			for i := 0 ; i < n ;i++ {
+				item := a[i]
+				val := fsGet(ctx , item)
+				if strings.HasPrefix(item , "http_") {
+					item = item[5:]
+				}
+
+				//避免JSON 最后一个逗号
+				if i == n - 1 {
+					buff.EOF = true
+				}
+
+				switch val.Type() {
+				case lua.LTNumber:
+					buff.WriteKI(item , int(val.(lua.LNumber)))
+				default:
+					buff.WriteKV(item , val.String())
+				}
+			}
+			buff.End()
+			return buff.Bytes()
+		}
+
+	case "line":
+		fn = func(ctx *RequestCtx) []byte {
+			n := len(a)
+			if n == 0 {
+				return byteNull
+			}
+			var buff bytes.Buffer
+			for i:=0;i<n;i++ {
+
+				if i != 0 {
+					buff.WriteByte(' ')
+				}
+				item := a[i]
+				val := fsGet(ctx ,item)
+
+				//去除前缀
+				if strings.HasPrefix(item , "http_") {
+					item = item[5:]
+				}
+				switch val.Type() {
+				case lua.LTNumber:
+					buff.WriteString(strconv.Itoa(int(val.(lua.LNumber))))
+				default:
+					buff.Write(lua.S2B(val.String()))
+				}
+			}
+			return buff.Bytes()
+		}
+
+	default:
+		return nil
+	}
+
+	return fn
 }
 
 func compileHandle(filename string) (*handle , error) {

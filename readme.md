@@ -16,7 +16,7 @@
         listen  = "0.0.0.0:9090", --监听的端口
    
         -- 日志格式 , 关闭：off 
-        access_log = "time,server_addr,server_port,remote_addr,host,path,query,ua,referer,status,content-lenght,region_info,http_risk",
+        access_format = "time,server_addr,server_port,remote_addr,host,path,query,ua,referer,status,content-lenght,region_info,http_risk",
     
         -- 日志的格式 
         access_encode = "json",
@@ -47,8 +47,31 @@
 利用的fasthttp的router路由逻辑，完成默认路由的注入 ， 利用fasthttp的快速匹配模式完成路由查找
 下面是www.a.com的主机的配置,文件路径:resource/fasthttp/server.d/www.a.com.lua
 注意: SETUP 中的routers配置目录下
+### fasthttp.router{}
+新建一个router对象
 ```lua
-local r = fasthttp.router() -- 新建一条路由
+    local r = fasthttp.router{
+    -- 日志格式 , 关闭：off 
+    access_format = "time,server_addr,server_port,remote_addr,host,path,query,ua,referer,status,content-lenght,region_info,http_risk",
+
+    -- 日志的格式 
+    access_encode = "json",
+
+    -- 记录IP的位置信息
+    access_region = "x-real-ip",
+    
+    --
+    output = rock.file{},
+    
+    --regionsdk
+    region = rock.region{}
+
+
+}
+```
+
+完整的例子 
+```lua
 local ctx = fasthttp.ctx    -- 用户请求周期变量
 local json = rock.json
 local function auth() 

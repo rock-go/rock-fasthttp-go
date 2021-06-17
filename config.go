@@ -3,15 +3,12 @@ package fasthttp
 import (
 	"errors"
 	"github.com/rock-go/rock/lua"
+	"github.com/rock-go/rock/region"
 )
 
 var (
 	AccessFormat = "http_time,server_addr,server_port,remote_addr,host,path"
 )
-
-type region interface {
-	Search( string ) (int64 , []byte , error)
-}
 
 type config struct {
 	//基础配置
@@ -26,13 +23,12 @@ type config struct {
 	daemon         string
 
 	//设置access日志
-	access         string
 	accessFormat   string
 	accessEncode   string
 	accessRegion   string
 
 	//下面对象配置
-	accessRegionSdk   region
+	accessRegionSdk   *region.Region
 	accessOutputSdk   lua.Writer
 }
 
@@ -57,7 +53,6 @@ func newConfig(L *lua.LState) *config {
 		case "reuseport": cfg.reuseport = val.String()
 		case "keepalive": cfg.keepalive = val.String()
 
-		case "access_log": cfg.access = val.String()
 		case "access_format": cfg.accessFormat = val.String()
 		case "access_encode": cfg.accessEncode = val.String()
 		case "access_region": cfg.accessRegion = val.String()

@@ -126,6 +126,7 @@ func (p *pool) insert( key string , val interface{} ) {
 		//字符串相等
 		if strings.EqualFold(item.key , key){
 			item.val = val
+			p.m.Unlock()
 			return //覆盖 不需要排序
 		}
 

@@ -6,10 +6,6 @@ import (
 )
 
 
-func (ser *server) Index(L *lua.LState , key string) lua.LValue {
-	return lua.LNil
-}
-
 func newLuaServer(L *lua.LState) int {
 	cfg := newConfig(L)
 	if e := cfg.verify(); e != nil {
@@ -46,7 +42,7 @@ done:
 
 func LuaInjectApi(env xcall.Env) {
 	fs := lua.NewUserKV()
-	fs.Set("ctx", instance)
+	fs.Set("ctx", fsCtx)
 
 	fs.Set("server" , lua.NewFunction(newLuaServer))
 	fs.Set("handle" , lua.NewFunction(newLuaHandle))

@@ -22,8 +22,13 @@ type server struct {
 	//中间对象
 	fs  *fasthttp.Server
 
+	//
+	accessFn func(*RequestCtx) []byte
+
 	//基础状态
 	uptime time.Time
+
+	//状态
 	stat   lua.LightUserDataStatus
 }
 
@@ -98,20 +103,78 @@ func (ser *server) invalid(ctx *RequestCtx , err error) {
 	ctx.Response.SetBodyString(err.Error())
 }
 
-func (ser *server) Region( ctx *RequestCtx ) {
+func (ser *server) Region(r *vRouter , ctx *RequestCtx ) {
+	region := ser.cfg.accessRegion
+	sdk := ser.cfg.accessRegionSdk
+	if r == nil {
+		goto done
+	}
+
+	if r.accessRegion != "" {
+		region = r.accessRegion
+	}
+
+	if r.accessRegionSdk != nil {
+		sdk = r.accessRegionSdk
+	}
+
+done:
+	if region == "" || sdk == nil {
+		return
+	}
+
+	ip := fsGet(ctx , region).String()
+	if len(ip) < 7 {
+		return
+	}
+
+	info, err := sdk.Search(ip)
+	if err != nil {
+		logger.Errorf("%v" , err)
+		return
+	}
+
+	ctx.SetUserValue("region" , info)
+	return
 
 }
 
-func (ser *server) Access( ctx *RequestCtx ) {
+func (ser *server) Log( r *vRouter , ctx *RequestCtx ) {
+	fn  := ser.accessFn
+	sdk := ser.cfg.accessOutputSdk
 
+	if r == nil {
+		goto done
+	}
+
+	if r.accessFn != nil {
+		fn = r.accessFn
+	}
+
+	//获取每个域名的请求
+	if r.accessOutputSdk != nil {
+		sdk = r.accessOutputSdk
+	}
+
+done:
+	//判断全局是否正常
+	if sdk == nil || fn == nil {
+		return
+	}
+	sdk.Write(fn(ctx))
 }
 
-func (ser *server) Log( ctx *RequestCtx ) {
-
+//编译
+func (ser *server) compile() {
+	ser.accessFn = compileAccessFormat(ser.cfg.accessFormat , ser.cfg.accessEncode)
 }
 
 func (ser *server) Handler( ctx *RequestCtx ) {
 	r , err := requireRouter(ser.cfg.router , ser.cfg.handler , lua.B2S(ctx.Host()))
+
+	//是否获取IP地址位置信息
+	ser.Region(r , ctx)
+
 	if err != nil {
 		if os.IsNotExist(err) {
 			ser.notFound(ctx)
@@ -125,7 +188,7 @@ func (ser *server) Handler( ctx *RequestCtx ) {
 	//运行处理逻辑
 
 done:
-	ser.Log(ctx)
+	ser.Log(r , ctx)
 
 	//释放co
 	freeLuaThread(ctx)
@@ -144,6 +207,7 @@ func (ser *server) Start() error {
 		TCPKeepalive: ser.keepalive(),
 	}
 	ser.ln = ln
+	ser.compile()
 
 	//延时捕获异常
 	tk := time.NewTicker(2 * time.Second)
@@ -157,8 +221,8 @@ func (ser *server) Start() error {
 		ser.stat = lua.PANIC
 		return err
 	}
-	ser.stat = lua.RUNNING
 
+	ser.stat = lua.RUNNING
 	return nil
 }
 

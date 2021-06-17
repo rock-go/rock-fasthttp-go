@@ -4,19 +4,28 @@ import (
 	"github.com/rock-go/rock/lua"
 	"net"
 	"strings"
+	"github.com/rock-go/rock/region"
 )
 
-type fsContext struct {
-	lua.Super
-	meta *pool
+type fsContext struct { lua.Super }
+
+func newCtxMeta() lua.UserKV {
+	meta := lua.NewUserKV()
+	meta.Set("say" , lua.NewFunction(fsSay))
+	meta.Set("append" , lua.NewFunction(fsAppend))
+	meta.Set("exit" , lua.NewFunction(fsExit))
+	meta.Set("eof" ,        lua.NewFunction(fsEof))
+	meta.Set("set_header" , lua.NewFunction(fsHeader))
+	return meta
 }
 
 func newContext() *lua.LightUserData {
-	return	lua.NewLightUserData( &fsContext{meta: newPool()})
+	return	lua.NewLightUserData( &fsContext{})
 }
 
 func checkRequestCtx(co *lua.LState) *RequestCtx {
 	if co.D == nil {
+		co.RaiseError("invalid request context")
 		return nil
 	}
 
@@ -45,11 +54,16 @@ func regionCityId( ctx *RequestCtx) int {
 }
 
 func regionRaw( ctx *RequestCtx) []byte {
-	uv := ctx.UserValue("region_raw")
-	v , ok := uv.([]byte)
-	if ok {
-		return v
+	uv := ctx.UserValue("region")
+	if uv == nil {
+		return byteNull
 	}
+
+	v , ok := uv.(*region.Info)
+	if ok {
+		return v.Byte()
+	}
+
 	return byteNull
 }
 
@@ -125,11 +139,11 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	switch key {
 	//主机头
 	case "host":
-		return lua.LString(ctx.Request.Host())
+		return lua.LString(lua.B2S(ctx.Request.Host()))
 
 	//浏览器标识
 	case "ua":
-		return lua.LString(ctx.Request.Header.UserAgent())
+		return lua.LString(lua.B2S(ctx.Request.Header.UserAgent()))
 
 	//客户端信息
 	case "remote_addr":
@@ -145,23 +159,19 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 
 	//请求信息
 	case "uri":
-		return lua.LString(ctx.URI().Path())
+		return lua.LString(lua.B2S(ctx.URI().Path()))
 	case "full_uri":
 		return lua.LString(ctx.URI().String())
 
 	case "query":
-		return lua.LString(ctx.URI().QueryString())
+		return lua.LString(lua.B2S(ctx.URI().QueryString()))
 	case "referer":
-		return lua.LString(ctx.Request.Header.Peek("referer"))
+		return lua.LString(lua.B2S(ctx.Request.Header.Peek("referer")))
 
 	case "content_length":
 		return lua.LNumber(ctx.Request.Header.ContentLength())
 	case "content_type":
-		return lua.LString(ctx.Request.Header.ContentType())
-
-	//位置信息
-	case "region_city":
-		return lua.LNumber(regionCityId(ctx))
+		return lua.LString(lua.B2S(ctx.Request.Header.ContentType()))
 
 	//返回结果
 	case "stauts":
@@ -182,16 +192,45 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	default:
 		switch {
 		case strings.HasPrefix(key, "arg_"):
-			return lua.LString(ctx.QueryArgs().Peek(key[4:]))
+			return lua.LString(lua.B2S(ctx.QueryArgs().Peek(key[4:])))
 
 		case strings.HasPrefix(key, "post_"):
-			return lua.LString(ctx.PostArgs().Peek(key[5:]))
+			return lua.LString(lua.B2S(ctx.PostArgs().Peek(key[5:])))
 
 		case strings.HasPrefix(key, "http_"):
-			return lua.LString(ctx.Request.Header.Peek(key[5:]))
+			item := lua.S2B(key[5:])
+			for i:=0;i<len(item);i++ { if item[i] == '_' { item[i] = '-' } }
+			return lua.LString(lua.B2S(ctx.Request.Header.Peek(lua.B2S(item))))
 
 		case strings.HasPrefix(key, "cookie_"):
-			return lua.LString(ctx.Request.Header.Cookie(key[7:]))
+			return lua.LString(lua.B2S(ctx.Request.Header.Cookie(key[7:])))
+
+		case strings.HasPrefix(key , "region_"):
+			uv := ctx.UserValue("region")
+			if uv == nil {
+				return lua.LNil
+			}
+
+			info , ok := uv.(*region.Info)
+			if !ok {
+				return lua.LNil
+			}
+
+			switch key[7:] {
+			case "city":
+				return lua.LString(lua.B2S(info.City()))
+			case "city_id":
+				return lua.LNumber(info.CityID())
+			case "province":
+				return lua.LString(lua.B2S(info.Province()))
+			case "region":
+				return lua.LString(lua.B2S(info.Region()))
+			case "isp":
+				return lua.LString(lua.B2S(info.ISP()))
+			default:
+				return lua.LNil
+			}
+
 
 		case strings.HasPrefix(key, "param_"):
 			uv := ctx.UserValue(key[6:])
@@ -205,7 +244,7 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 			case interface{ String() string }:
 				return lua.LString(s.String())
 			case interface{ Byte() []byte }:
-				return lua.LString(s.Byte())
+				return lua.LString(lua.B2S(s.Byte()))
 			default:
 				return lua.LNil
 			}
@@ -215,51 +254,11 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	return lua.LNil
 }
 
-func (fc *fsContext) newFunc(co *lua.LState , key string , gn lua.LGFunction) *lua.LFunction {
-	//缓存池
-	item := fc.meta.Get(key)
-	if item != nil {
-		return item.val.(*lua.LFunction)
-	}
-
-	//新建
-	fn := co.NewFunction(gn)
-	fc.meta.insert(key , fn)
-	return fn
-}
-
 func (fc *fsContext) Index(co *lua.LState , key string) lua.LValue {
 	ctx := checkRequestCtx(co)
-	if ctx == nil {
-		co.RaiseError("invalid request context")
-		return lua.LNil
+	if v := ctxMeta.Get(key) ; v != lua.LNil {
+		return v
 	}
 
-	switch key {
-
-	//输出
-	case "say":
-		return fc.newFunc(co , key , fsSay)
-
-	//添加
-	case "append":
-		return fc.newFunc(co , key , fsAppend)
-
-	//退出
-	case "exit":
-		return fc.newFunc(co , key , fsExit)
-
-	//退出
-	case "eof":
-		return fc.newFunc(co , key , fsEof)
-
-	//请求头
-	case "set_header":
-		return fc.newFunc(co , key , fsHeader)
-
-	//默认
-	default:
-		return fsGet(ctx , key)
-	}
-
+	return fsGet(ctx , key)
 }
