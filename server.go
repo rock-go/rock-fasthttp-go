@@ -52,10 +52,16 @@ func (ser *server) Close() error {
 	if ser.stat == lua.CLOSE {
 		return nil
 	}
-
-	ser.fs.Shutdown()
 	routerPool.clear(ser.cfg.router)
 	handlePool.clear(ser.cfg.handler)
+
+	ser.fs.Shutdown()
+	if e := ser.fs.Shutdown(); e != nil {
+		logger.Errorf("%s fasthttp close error %v" , ser.Name() , e)
+		ser.stat = lua.PANIC
+		return e
+	}
+
 	ser.stat = lua.CLOSE
 	return nil
 }
@@ -171,7 +177,6 @@ func (ser *server) compile() {
 
 func (ser *server) Handler( ctx *RequestCtx ) {
 	r , err := requireRouter(ser.cfg.router , ser.cfg.handler , lua.B2S(ctx.Host()))
-
 	//是否获取IP地址位置信息
 	ser.Region(r , ctx)
 
@@ -182,6 +187,7 @@ func (ser *server) Handler( ctx *RequestCtx ) {
 		}
 
 		ser.invalid(ctx , err)
+		goto done
 	}
 
 	r.r.Handler( ctx )
@@ -210,7 +216,7 @@ func (ser *server) Start() error {
 	ser.compile()
 
 	//延时捕获异常
-	tk := time.NewTicker(2 * time.Second)
+	tk := time.NewTicker(1 * time.Second)
 	go func() {
 		err = ser.fs.Serve(ln)
 	}()

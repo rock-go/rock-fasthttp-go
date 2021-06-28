@@ -7,33 +7,23 @@ import (
 	"github.com/rock-go/rock/region"
 )
 
-type fsContext struct { lua.Super }
-
-func newCtxMeta() lua.UserKV {
-	meta := lua.NewUserKV()
-	meta.Set("say" , lua.NewFunction(fsSay))
-	meta.Set("append" , lua.NewFunction(fsAppend))
-	meta.Set("exit" , lua.NewFunction(fsExit))
-	meta.Set("eof" ,        lua.NewFunction(fsEof))
-	meta.Set("set_header" , lua.NewFunction(fsHeader))
-	return meta
+type fsContext struct {
+	lua.NoReflect
+	meta lua.UserKV
 }
 
-func newContext() *lua.LightUserData {
-	return	lua.NewLightUserData( &fsContext{})
+func newContext() *lua.AnyData {
+	ctx := &fsContext{meta: lua.NewUserKV()}
+	ctx.initMeta()
+	return lua.NewAnyData( ctx )
 }
 
-func checkRequestCtx(co *lua.LState) *RequestCtx {
-	if co.D == nil {
-		co.RaiseError("invalid request context")
-		return nil
-	}
-
-	ctx , ok := co.D.(*RequestCtx)
-	if !ok {
-		return nil
-	}
-	return ctx
+func (fsc *fsContext) initMeta() {
+	fsc.meta.Set("say" , lua.NewFunction(fsSay))
+	fsc.meta.Set("append" , lua.NewFunction(fsAppend))
+	fsc.meta.Set("exit" , lua.NewFunction(fsExit))
+	fsc.meta.Set("eof" ,        lua.NewFunction(fsEof))
+	fsc.meta.Set("set_header" , lua.NewFunction(fsHeader))
 }
 
 func xPort(addr net.Addr) int {
@@ -254,11 +244,10 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	return lua.LNil
 }
 
-func (fc *fsContext) Index(co *lua.LState , key string) lua.LValue {
+func (fsc *fsContext) Get(co *lua.LState , key string) lua.LValue {
 	ctx := checkRequestCtx(co)
-	if v := ctxMeta.Get(key) ; v != lua.LNil {
+	if v := fsc.meta.Get(key); v != lua.LNil {
 		return v
 	}
-
 	return fsGet(ctx , key)
 }

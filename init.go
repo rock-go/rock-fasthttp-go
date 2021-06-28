@@ -9,14 +9,12 @@ var (
 	once       sync.Once
 	handlePool *pool
 	routerPool *pool
-	ctxMeta    lua.UserKV
-	fsCtx      *lua.LightUserData
+	Context    *lua.AnyData
 )
 
 func init() {
 	once.Do(func() {
-		fsCtx = newContext()
-		ctxMeta = newCtxMeta()
+		Context = newContext()
 		handlePool = newPool()
 		routerPool = newPool()
 		go routerPoolSync()

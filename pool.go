@@ -169,7 +169,7 @@ func (p *pool) clear(prefix string) {
 	k := 0
 	for i := 0 ; i < n; i++ {
 		if strings.HasPrefix(p.v[i].key , prefix) {
-			logger.Errorf("start clear %s ... " , p.v[i].key)
+			logger.Errorf("clear %s ... " , p.v[i].key)
 			p.v[i].clear()
 			k++
 		}
@@ -177,9 +177,10 @@ func (p *pool) clear(prefix string) {
 	if k != 0 {
 		sort.Sort(p)
 		p.v = p.v[:n-k]
-		logger.Errorf("router sync clear succeed")
 	}
+
 	p.m.Unlock()
+	logger.Errorf("%s sync clear succeed" , prefix)
 }
 
 func (p *pool) sync( fn func(*poolItem , *int)  ) {
@@ -194,7 +195,7 @@ func (p *pool) sync( fn func(*poolItem , *int)  ) {
 	if del != 0 {
 		sort.Sort(p)
 		p.v = p.v[:n - del]
-		logger.Errorf("router sync delete succeed")
+		logger.Errorf("sync delete succeed")
 	}
 
 	p.m.Unlock()

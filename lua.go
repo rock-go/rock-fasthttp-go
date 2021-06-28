@@ -17,9 +17,10 @@ func newLuaServer(L *lua.LState) int {
 	var ok bool
 
 	proc := L.NewProc(cfg.name)
-	if proc.Value == nil {
-		proc.Value = newServer( cfg )
+	if proc.IsNil() {
+		proc.Set(newServer(cfg))
 		goto done
+
 	}
 
 	fs , ok = proc.Value.(*server)
@@ -27,13 +28,7 @@ func newLuaServer(L *lua.LState) int {
 		L.RaiseError("invalid type %s running" , cfg.name)
 		return 0
 	}
-
-	//重启服务
-	if e := fs.Close(); e != nil {
-		L.RaiseError("%v" , e)
-		return 0
-	}
-	proc.Value = newServer(cfg)
+	fs.cfg = cfg
 
 done:
 	L.Push(proc)
@@ -42,7 +37,7 @@ done:
 
 func LuaInjectApi(env xcall.Env) {
 	fs := lua.NewUserKV()
-	fs.Set("ctx", fsCtx)
+	fs.Set("ctx", Context)
 
 	fs.Set("server" , lua.NewFunction(newLuaServer))
 	fs.Set("handle" , lua.NewFunction(newLuaHandle))

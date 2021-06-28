@@ -70,6 +70,19 @@ func checkRouter(L *lua.LState) (*vRouter, error) {
 	return r , nil
 }
 
+func checkRequestCtx(L *lua.LState) *RequestCtx {
+	if L.D == nil {
+		L.RaiseError("invalid request context")
+		return nil
+	}
+
+	ctx , ok := L.D.(*RequestCtx)
+	if !ok {
+		return nil
+	}
+	return ctx
+}
+
 func checkRegionSdk(L *lua.LState , val lua.LValue) *region.Region {
 
 	switch val.Type() {
