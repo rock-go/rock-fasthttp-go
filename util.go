@@ -7,11 +7,12 @@ import (
 	"github.com/rock-go/rock/xcall"
 	"fmt"
 	"os"
-	"time"
 	"strconv"
 	"strings"
 	"bytes"
 	"github.com/rock-go/rock/region"
+	"github.com/valyala/fasthttp"
+	"runtime/debug"
 )
 
 func checkHandleChains(L *lua.LState) *HandleChains {
@@ -199,7 +200,7 @@ func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte
 	return fn
 }
 
-func compileHandle(filename string) (*handle , error) {
+func compileHandle(filename string , args ...interface{}) (PoolItemIFace , error) {
 	//重新获取
 	co := lua.State()
 	defer lua.FreeState(co)
@@ -260,11 +261,11 @@ func requireHandle( path , name string ) (*handle , error) {
 	}
 
 	handlePool.insert(filename , hd)
-	return hd , nil
+	return hd.(*handle) , nil
 
 }
 
-func compileRouter(filename string , handler string) (*vRouter , error) {
+func compileRouter(filename string , args ...interface{}) (PoolItemIFace , error) {
 
 	//重新获取
 	stat , err := os.Stat(filename)
@@ -287,7 +288,7 @@ func compileRouter(filename string , handler string) (*vRouter , error) {
 		return nil , err
 	}
 
-	r.handler = handler
+	r.handler = args[0].(string)
 	r.name = filename
 	r.mtime = stat.ModTime().Unix()
 	logger.Errorf("router %s compile succeed" , filename)
@@ -310,61 +311,25 @@ func requireRouter(path , handler, host string) (*vRouter , error) {
 	}
 
 	routerPool.insert(filename , r)
-	return r , err
+	return r.(*vRouter) , err
 }
 
-func routerPoolSync() {
-	tk := time.NewTicker(1000 *time.Millisecond)
-	for range tk.C {
-		routerPool.sync(func(item *poolItem , del *int){
-			stat , err := os.Stat(item.key)
-			var r *vRouter
-			if os.IsNotExist(err) {
-				*del++
-				logger.Errorf("router %s delete" , item.key)
-				goto next
-			}
-
-			r = item.val.(*vRouter)
-			if stat.ModTime().Unix() == r.mtime {
-				goto next
-			}
-
-			if xr , e := compileRouter(item.key , r.handler); e != nil {
-				logger.Errorf("router %s sync update fail , err: %v" , item.key , e)
-			} else {
-				logger.Errorf("router %s sync update succeed " , item.key)
-				item.val = xr
-			}
-		next:
-		})
+func checkLuaEof( ctx *RequestCtx) bool {
+	uv := ctx.UserValue(eof_uv_key)
+	if uv == nil {
+		return false
 	}
+
+	v , ok := uv.(bool)
+	if !ok {
+		return false
+	}
+
+	return v
 }
 
-func handlePoolSync() {
-	tk := time.NewTicker(1000 *time.Millisecond)
-	for range tk.C {
-		handlePool.sync(func(item *poolItem, del *int) {
-			stat, err := os.Stat(item.key)
-			var hd *handle
-			if os.IsNotExist(err) {
-				*del++
-				logger.Errorf("handle %s delete" , item.key)
-				goto next
-			}
-
-			hd = item.val.(*handle)
-			if stat.ModTime().Unix() == hd.mtime {
-				goto next
-			}
-
-			if xhd, e := compileHandle(item.key); e != nil {
-				logger.Errorf("handle %s sync update fail , err: %v", item.key, e)
-			} else {
-				logger.Errorf("handle %s sync update succeed ", item.key)
-				item.val = xhd
-			}
-		next:
-		})
-	}
+func panicHandler( ctx *RequestCtx , val interface{}) {
+	ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
+	e := fmt.Sprintf("%v %s" , val , debug.Stack())
+	ctx.Response.SetBodyString(e)
 }

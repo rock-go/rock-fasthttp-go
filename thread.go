@@ -2,25 +2,6 @@ package fasthttp
 
 import "github.com/rock-go/rock/lua"
 
-var (
-	thread_uv_key = "__thread_co__"
-	eof_uv_key = "__handle_eof__"
-)
-
-func checkLuaEof( ctx *RequestCtx) bool {
-	uv := ctx.UserValue(eof_uv_key)
-	if uv == nil {
-		return false
-	}
-
-	v , ok := uv.(bool)
-	if !ok {
-		return false
-	}
-
-	return v
-}
-
 func newLuaThread( ctx *RequestCtx ) *lua.LState {
 	uv := ctx.UserValue(thread_uv_key)
 	if uv != nil {

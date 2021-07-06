@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/rock-go/rock/lua"
 	"github.com/rock-go/rock/region"
+	"database/sql"
 )
 
 var (
@@ -21,7 +22,7 @@ type config struct {
 	reuseport      string
 	notFound       string
 	daemon         string
-
+	readTimeout    int
 	//设置access日志
 	accessFormat   string
 	accessEncode   string
@@ -30,6 +31,10 @@ type config struct {
 	//下面对象配置
 	accessRegionSdk   *region.Region
 	accessOutputSdk   lua.Writer
+
+	//database
+	db             *sql.DB
+	debug          bool
 }
 
 func newConfig(L *lua.LState) *config {
@@ -53,12 +58,22 @@ func newConfig(L *lua.LState) *config {
 		case "reuseport": cfg.reuseport = val.String()
 		case "keepalive": cfg.keepalive = val.String()
 
+		case "read_timeout":
+			n , ok := val.(lua.LNumber)
+			if !ok {
+				L.RaiseError("read_timeout must be int , got %s" , val.Type().String())
+				return
+			}
+			cfg.readTimeout = int(n)
+
 		case "access_format": cfg.accessFormat = val.String()
 		case "access_encode": cfg.accessEncode = val.String()
 		case "access_region": cfg.accessRegion = val.String()
 
 		case "region": cfg.accessRegionSdk = checkRegionSdk(L , val)
 		case "output": cfg.accessOutputSdk = checkOutputSdk(L , val)
+
+
 
 		default:
 			L.RaiseError("invalid fasthttp config %s field" , key.String() )

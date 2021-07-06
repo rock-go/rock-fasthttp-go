@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"github.com/rock-go/rock/region"
+	"github.com/rock-go/rock/json"
 )
 
 type fsContext struct {
@@ -12,19 +13,13 @@ type fsContext struct {
 	meta lua.UserKV
 }
 
+
 func newContext() *lua.AnyData {
 	ctx := &fsContext{meta: lua.NewUserKV()}
 	ctx.initMeta()
 	return lua.NewAnyData( ctx )
 }
 
-func (fsc *fsContext) initMeta() {
-	fsc.meta.Set("say" , lua.NewFunction(fsSay))
-	fsc.meta.Set("append" , lua.NewFunction(fsAppend))
-	fsc.meta.Set("exit" , lua.NewFunction(fsExit))
-	fsc.meta.Set("eof" ,        lua.NewFunction(fsEof))
-	fsc.meta.Set("set_header" , lua.NewFunction(fsHeader))
-}
 
 func xPort(addr net.Addr) int {
 	x , ok := addr.(*net.TCPAddr)
@@ -72,6 +67,46 @@ func fsSay(co *lua.LState) int {
 	return 0
 }
 
+type ToJson interface {
+	ToJson() ([]byte , error)
+}
+
+func fsSayJson(co *lua.LState) int {
+	val := co.Get(1)
+	ctx := checkRequestCtx(co)
+
+	var v interface{ToJson() ([]byte , error)}
+	switch obj := val.(type) {
+	case *lua.LightUserData:
+		v = obj.Value
+	case *lua.AnyData:
+		var ok bool
+		v , ok = obj.Value.(ToJson)
+		if !ok {
+			co.RaiseError("invalid toJson")
+			return 0
+		}
+
+	case *lua.LUserData:
+		var ok bool
+		v , ok = obj.Value.(ToJson)
+		if !ok {
+			co.RaiseError("invalid toJson")
+			return 0
+		}
+	default:
+		co.RaiseError("invalid type , must object , got %s" , val.Type().String())
+		return 0
+	}
+	chunk , e := v.ToJson()
+	if e != nil {
+		ctx.Error(e.Error() , 500)
+		return 0
+	}
+	ctx.SetBody(chunk)
+	return 0
+}
+
 func fsAppend(co *lua.LState) int {
 	n := co.GetTop()
 	if n == 0 {
@@ -98,6 +133,37 @@ func fsExit(co *lua.LState) int {
 func fsEof(co *lua.LState) int {
 	ctx := checkRequestCtx(co)
 	ctx.SetUserValue(eof_uv_key , true)
+	return 0
+}
+
+func fsISERR(co *lua.LState) int {
+	n := co.GetTop()
+	if n == 0 {
+		return 0
+	}
+
+	v := co.Get(1)
+	if v.Type() == lua.LTNil {
+		return 0
+	}
+	co.RaiseError("%v" , v)
+	return 0
+}
+
+func fsERR(co *lua.LState) int {
+	n := co.GetTop()
+	if n == 0 {
+		co.RaiseError("invalid")
+		return 0
+	}
+
+	data := make([]interface{}, n)
+	format := make([]string , n)
+	for i := 1; i<=n;i++ {
+		format[i-1] = "%v "
+		data[i-1] = co.CheckAny(i)
+	}
+	co.RaiseError(strings.Join(format , " ") , data...)
 	return 0
 }
 
@@ -164,7 +230,7 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 		return lua.LString(lua.B2S(ctx.Request.Header.ContentType()))
 
 	//返回结果
-	case "stauts":
+	case "status":
 		return lua.LNumber(ctx.Response.StatusCode())
 	case "sent":
 		return lua.LNumber(ctx.Response.Header.ContentLength())
@@ -242,6 +308,29 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	}
 
 	return lua.LNil
+}
+
+func luaFastJSON(L *lua.LState) int {
+	ctx := checkRequestCtx(L)
+	f , err := json.NewFastJson(ctx.Request.Body())
+	if err != nil {
+		L.RaiseError("json %v" , err)
+		return 0
+	}
+	L.Push(L.NewAnyData( f ))
+	return 1
+}
+
+func (fsc *fsContext) initMeta() {
+	fsc.meta.Set("say_json" , lua.NewFunction(fsSayJson))
+	fsc.meta.Set("say" , lua.NewFunction(fsSay))
+	fsc.meta.Set("append" , lua.NewFunction(fsAppend))
+	fsc.meta.Set("exit" , lua.NewFunction(fsExit))
+	fsc.meta.Set("eof" ,        lua.NewFunction(fsEof))
+	fsc.meta.Set("set_header" , lua.NewFunction(fsHeader))
+	fsc.meta.Set("ERR" , lua.NewFunction(fsERR))
+	fsc.meta.Set("bind_json" , lua.NewFunction(luaFastJSON))
+	fsc.meta.Set("file" , lua.NewFunction(newLuaFormFile))
 }
 
 func (fsc *fsContext) Get(co *lua.LState , key string) lua.LValue {

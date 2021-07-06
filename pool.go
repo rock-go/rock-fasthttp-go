@@ -5,18 +5,26 @@ import (
 	"sync"
 	"sort"
 	"strings"
+	"os"
 )
 
 type poolItem struct {
-	id  int
+	id    int
 	count uint32
-	key string
-	val interface{}
+	key   string
+	val   PoolItemIFace
+}
+
+
+type PoolItemIFace interface {
+	Close()  error
+	MTime()  int64
+	Option() interface{}
 }
 
 var byteNull = []byte("")
 
-func newPoolItem(key string , val interface{}) *poolItem {
+func newPoolItem(key string , val PoolItemIFace) *poolItem {
 	return &poolItem{ key: key , val: val , count: 0}
 }
 
@@ -24,11 +32,11 @@ func (pi *poolItem) Key() string {
 	return pi.key
 }
 
-func (pi *poolItem) Val() interface{} {
+func (pi *poolItem) Val() PoolItemIFace {
 	return pi.val
 }
 
-func (pi *poolItem) Update( val interface{}) {
+func (pi *poolItem) Update( val PoolItemIFace ) {
 	pi.val = val
 }
 
@@ -116,7 +124,7 @@ done:
 	return val
 }
 
-func (p *pool) insert( key string , val interface{} ) {
+func (p *pool) insert( key string , val PoolItemIFace ) {
 	p.m.Lock()
 	n := p.Len()
 	var item *poolItem
@@ -183,20 +191,57 @@ func (p *pool) clear(prefix string) {
 	logger.Errorf("%s sync clear succeed" , prefix)
 }
 
-func (p *pool) sync( fn func(*poolItem , *int)  ) {
+type compileFn func(string , ...interface{}) ( PoolItemIFace , error )
+func (p *pool) sync( compile compileFn ) {
 	p.m.Lock()
 	n := p.Len()
 	del := 0
-
 	for i := 0 ; i < n ; i++ {
-		fn(p.v[i] , &del)
+		item := p.v[i]
+		if item.key == "" {
+			continue
+		}
+
+		//判断是否存在
+		stat , err := os.Stat(item.key)
+		if os.IsNotExist(err) {
+			//关闭历史
+			if e := item.Val().Close() ; e != nil {
+				logger.Errorf("pool %s close error %v" , item.key , e)
+			} else {
+				logger.Errorf("pool %s close succeed" , item.key)
+
+			}
+			del++
+			p.v[i].clear()
+			logger.Errorf("pool %s delete" , item.key)
+			continue
+		}
+
+		//如果没有修改
+		if stat.ModTime().Unix() == item.Val().MTime() {
+			continue
+		}
+
+		//编译
+		if obj , e := compile(item.key , item.val.Option()); e != nil {
+			logger.Errorf("%s compile error %v" , item.key , e)
+			continue
+		} else {
+			if e2 := item.val.Close(); e2 != nil {
+				logger.Errorf("pool %s close error %v" , item.key , e2)
+			} else {
+				logger.Errorf("pool %s close succeed" , item.key)
+			}
+			item.val = obj
+			logger.Errorf("%s compile succeed" , item.key)
+		}
 	}
 
 	if del != 0 {
 		sort.Sort(p)
 		p.v = p.v[:n - del]
-		logger.Errorf("sync delete succeed")
+		logger.Errorf("sync delete %d succeed" , del)
 	}
-
 	p.m.Unlock()
 }

@@ -49,6 +49,8 @@
 注意: SETUP 中的routers配置目录下
 ### fasthttp.router{}
 新建一个router对象
+- 2021-07-06 新增interceptor对象
+
 ```lua
     local r = fasthttp.router{
     -- 日志格式 , 关闭：off 
@@ -64,9 +66,13 @@
     output = rock.file{},
     
     --regionsdk
-    region = rock.region{}
-
-
+    region = rock.region{},
+    
+    interceptor = function()
+        if ctx.status == 500 then
+            ctx.say([[{"code": 500 , "message":"invalid request"}]])    
+        end
+    end
 }
 ```
 
@@ -127,6 +133,22 @@ r.GET("/info" ,
 - 参数 handle: 就是用fasthttp.handle构造的对象
 
 #### 2. ctx周期变量的使用
+- fasthttp.ctx.say_json
+自动encode obj 对象 并且发送JSON对象 , obj 需要满足是userdata anydata 且满足ToJson 接口
+```lua
+    local ctx = fasthttp.ctx
+    ctx.say_json(obj)
+```
+- fasthttp.ctx.bind_json
+自动绑定请求参数 如果异常会自动退出请求
+```lua
+    local ctx = fasthttp.ctx
+    local v = ctx.bind_json()
+    ctx.say(v.int("id"))
+    ctx.say(v.str("name"))
+    ctx.say(v.bool("enable"))
+```
+
 - fasthttp.ctx.say(string...)
 ```lua
     local ctx = fasthttp.ctx

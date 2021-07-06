@@ -6,8 +6,6 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/rock-go/rock/xcall"
 	"github.com/rock-go/rock/logger"
-	"fmt"
-	"runtime/debug"
 	"github.com/rock-go/rock/region"
 )
 
@@ -34,14 +32,18 @@ type vRouter struct {
 	//handler处理脚本路径
 	handler string
 
+	close       *lua.LFunction
+	interceptor *lua.LFunction
+
 	//缓存路由
 	r      *router.Router
 }
 
 func newRouter(co *lua.LState) *vRouter {
-	tab := co.CheckTable(1)
+	tab := co.CheckAny(1)
 	r := router.New()
 	r.PanicHandler = panicHandler
+
 	v := &vRouter{
 		r:r,
 		accessFormat: "",
@@ -49,7 +51,11 @@ func newRouter(co *lua.LState) *vRouter {
 		accessEncode: "line",
 	}
 
-	tab.ForEach(func(key lua.LValue, val lua.LValue) {
+	if tab.Type() != lua.LTTable {
+		return v
+	}
+
+	tab.(*lua.LTable).ForEach(func(key lua.LValue, val lua.LValue){
 		switch key.String() {
 		case "access_format":
 			v.accessFormat = val.String()
@@ -65,6 +71,16 @@ func newRouter(co *lua.LState) *vRouter {
 
 		case "output":
 			v.accessOutputSdk = checkOutputSdk(co , val)
+
+		case "close":
+			if val.Type() != lua.LTFunction {
+				return
+			}
+			v.close = val.(*lua.LFunction)
+		case "interceptor":
+			if val.Type() == lua.LTFunction{
+				v.interceptor = val.(*lua.LFunction)
+			}
 		}
 	})
 
@@ -72,10 +88,29 @@ func newRouter(co *lua.LState) *vRouter {
 	return v
 }
 
-func panicHandler( ctx *RequestCtx , val interface{}) {
-	ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
-	e := fmt.Sprintf("%v %s" , val , debug.Stack())
-	ctx.Response.SetBodyString(e)
+func newLuaRouter(co *lua.LState) int {
+	r := newRouter(co)
+	co.D = r
+	co.Push(co.NewLightUserData(r))
+	return 1
+}
+
+func (r *vRouter) Close() error {
+	if r.close == nil {
+		return nil
+	}
+	co := lua.State()
+	defer lua.FreeState(co)
+
+	return xcall.CallByEnv(co , r.close , xcall.Rock)
+}
+
+func (r *vRouter) MTime() int64 {
+	return r.mtime
+}
+
+func (r *vRouter) Option() interface{} {
+	return r.handler
 }
 
 func (r *vRouter) Name() string {
@@ -151,10 +186,6 @@ func (r *vRouter) fileIndexFn( L *lua.LState ) *lua.LFunction {
 	return L.NewFunction(fn)
 }
 
-func (r *vRouter) state(ctx *RequestCtx) *lua.LState {
-	return ctx.UserValue("__co__").(*lua.LState)
-}
-
 func (r *vRouter) call( co *lua.LState , hook *lua.LFunction ) {
 	if hook == nil {
 		return
@@ -184,9 +215,24 @@ func (r *vRouter) Index(L *lua.LState , key string) lua.LValue {
 	return lua.LNil
 }
 
-func newLuaRouter(co *lua.LState) int {
-	r := newRouter(co)
-	co.D = r
-	co.Push(co.NewLightUserData(r))
-	return 1
+func (r *vRouter) do(ctx *RequestCtx) {
+	r.r.Handler(ctx)
+
+	if r.interceptor == nil {
+		return
+	}
+
+	co := newLuaThread(ctx)
+	p := lua.P{
+		Fn: r.interceptor,
+		NRet: 0,
+		Protect: true,
+	}
+
+	err := xcall.CallByParam(co , p , xcall.Rock)
+	if err != nil {
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+		ctx.SetBodyString(err.Error())
+		return
+	}
 }

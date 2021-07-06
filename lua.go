@@ -5,7 +5,6 @@ import (
 	"github.com/rock-go/rock/lua"
 )
 
-
 func newLuaServer(L *lua.LState) int {
 	cfg := newConfig(L)
 	if e := cfg.verify(); e != nil {

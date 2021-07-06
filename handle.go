@@ -39,8 +39,8 @@ type handle struct {
 	//返回包处理
 	code    int
 	header  *header
-	hook   *lua.LFunction
-
+	hook    *lua.LFunction
+	close   *lua.LFunction
 	//返回结果
 	body   []byte
 
@@ -50,6 +50,24 @@ type handle struct {
 
 func newHandle(name string) *handle {
 	return &handle{ name: name , eof: false}
+}
+
+func (hd *handle) Close() error {
+	if hd.close == nil {
+		return nil
+	}
+	co := lua.State()
+	defer lua.FreeState(co)
+
+	return xcall.CallByEnv(co , hd.close , xcall.Rock)
+}
+
+func (hd *handle) MTime() int64 {
+	return hd.mtime
+}
+
+func (hd *handle) Option() interface{} {
+	return nil
 }
 
 func (hd *handle) do(co *lua.LState , ctx *RequestCtx) error {
@@ -140,6 +158,11 @@ func newLuaHandle(L *lua.LState) int {
 				return
 			}
 			hd.hook = val.(*lua.LFunction)
+		case "close":
+			if val.Type() != lua.LTFunction {
+				return
+			}
+			hd.close = val.(*lua.LFunction)
 
 		case "eof":
 			if val.Type() != lua.LTBool {
@@ -244,7 +267,6 @@ func (hc *HandleChains) do(ctx *RequestCtx , path string) { //path handle 查找
 				hc.invalid(ctx , e.Error())
 				return
 			}
-			eof = checkLuaEof(ctx)
 
 		//异常
 		default:
@@ -252,7 +274,7 @@ func (hc *HandleChains) do(ctx *RequestCtx , path string) { //path handle 查找
 			return
 		}
 
-		if eof {
+		if eof || checkLuaEof(ctx){
 			return
 		}
 
