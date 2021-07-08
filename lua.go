@@ -7,27 +7,12 @@ import (
 
 func newLuaServer(L *lua.LState) int {
 	cfg := newConfig(L)
-	if e := cfg.verify(); e != nil {
-		L.RaiseError("%v" , e)
-		return 0
-	}
-
-	var fs *server
-	var ok bool
-
-	proc := L.NewProc(cfg.name)
+	proc := L.NewProc(cfg.name , FASTHTTP)
 	if proc.IsNil() {
 		proc.Set(newServer(cfg))
 		goto done
-
 	}
-
-	fs , ok = proc.Value.(*server)
-	if !ok {
-		L.RaiseError("invalid type %s running" , cfg.name)
-		return 0
-	}
-	fs.cfg = cfg
+	proc.Value.(*server).cfg = cfg
 
 done:
 	L.Push(proc)

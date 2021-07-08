@@ -4,6 +4,7 @@ import (
 	"sync"
 	"github.com/rock-go/rock/lua"
 	"time"
+	"reflect"
 )
 
 var (
@@ -11,6 +12,8 @@ var (
 	handlePool *pool
 	routerPool *pool
 	Context    *lua.AnyData
+
+	FASTHTTP = reflect.TypeOf((*server)(nil)).String()
 )
 const (
 	thread_uv_key = "__thread_co__"
