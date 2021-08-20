@@ -1,30 +1,30 @@
 package fasthttp
 
 import (
-	"github.com/rock-go/rock/lua"
 	"bytes"
+	"github.com/rock-go/rock/lua"
 	"io"
 )
 
 func newLuaFormFile(co *lua.LState) int {
 	ctx := checkRequestCtx(co)
-	h , e := ctx.FormFile("file")
+	h, e := ctx.FormFile("file")
 	if e != nil {
-		co.RaiseError("%v" , e)
+		co.RaiseError("%v", e)
 		return 0
 	}
 
-	file , e := h.Open()
+	file, e := h.Open()
 	if e != nil {
-		co.RaiseError("%v" , e)
+		co.RaiseError("%v", e)
 		return 0
 	}
 	defer file.Close()
 	name := h.Filename
 	var buff bytes.Buffer
-	n , e := io.Copy(&buff, file)
+	n, e := io.Copy(&buff, file)
 	if e != nil {
-		co.RaiseError("%v" , e)
+		co.RaiseError("%v", e)
 		return 0
 	}
 

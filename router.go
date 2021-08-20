@@ -1,12 +1,12 @@
 package fasthttp
 
 import (
-	"github.com/rock-go/rock/lua"
 	"github.com/fasthttp/router"
-	"github.com/valyala/fasthttp"
-	"github.com/rock-go/rock/xcall"
 	"github.com/rock-go/rock/logger"
+	"github.com/rock-go/rock/lua"
 	"github.com/rock-go/rock/region"
+	"github.com/rock-go/rock/xcall"
+	"github.com/valyala/fasthttp"
 )
 
 type RequestCtx = fasthttp.RequestCtx
@@ -15,16 +15,16 @@ type vRouter struct {
 	lua.Super
 
 	//获取名称
-	name   string
+	name string
 
 	//上次修改时间
-	mtime  int64 //时间
+	mtime int64 //时间
 
 	//router中的命令
-	accessFormat    string
-	accessEncode    string
-	accessRegion    string
-	accessFn        func(ctx *RequestCtx) []byte
+	accessFormat string
+	accessEncode string
+	accessRegion string
+	accessFn     func(ctx *RequestCtx) []byte
 
 	accessOutputSdk lua.Writer
 	accessRegionSdk *region.Region
@@ -36,7 +36,7 @@ type vRouter struct {
 	interceptor *lua.LFunction
 
 	//缓存路由
-	r      *router.Router
+	r *router.Router
 }
 
 func newRouter(co *lua.LState) *vRouter {
@@ -45,7 +45,7 @@ func newRouter(co *lua.LState) *vRouter {
 	r.PanicHandler = panicHandler
 
 	v := &vRouter{
-		r:r,
+		r:            r,
 		accessFormat: "",
 		accessRegion: "",
 		accessEncode: "line",
@@ -55,7 +55,7 @@ func newRouter(co *lua.LState) *vRouter {
 		return v
 	}
 
-	tab.(*lua.LTable).ForEach(func(key lua.LValue, val lua.LValue){
+	tab.(*lua.LTable).ForEach(func(key lua.LValue, val lua.LValue) {
 		switch key.String() {
 		case "access_format":
 			v.accessFormat = val.String()
@@ -67,10 +67,10 @@ func newRouter(co *lua.LState) *vRouter {
 			v.accessRegion = val.String()
 
 		case "region":
-			v.accessRegionSdk = checkRegionSdk(co , val)
+			v.accessRegionSdk = checkRegionSdk(co, val)
 
 		case "output":
-			v.accessOutputSdk = checkOutputSdk(co , val)
+			v.accessOutputSdk = checkOutputSdk(co, val)
 
 		case "close":
 			if val.Type() != lua.LTFunction {
@@ -78,13 +78,13 @@ func newRouter(co *lua.LState) *vRouter {
 			}
 			v.close = val.(*lua.LFunction)
 		case "interceptor":
-			if val.Type() == lua.LTFunction{
+			if val.Type() == lua.LTFunction {
 				v.interceptor = val.(*lua.LFunction)
 			}
 		}
 	})
 
-	v.accessFn = compileAccessFormat(v.accessFormat , v.accessEncode)
+	v.accessFn = compileAccessFormat(v.accessFormat, v.accessEncode)
 	return v
 }
 
@@ -102,7 +102,7 @@ func (r *vRouter) Close() error {
 	co := lua.State()
 	defer lua.FreeState(co)
 
-	return xcall.CallByEnv(co , r.close , xcall.Rock)
+	return xcall.CallByEnv(co, r.close, xcall.Rock)
 }
 
 func (r *vRouter) MTime() int64 {
@@ -121,11 +121,11 @@ func (r *vRouter) Type() string {
 	return "fasthttp.router"
 }
 
-func (r *vRouter) handleIndexFn(L *lua.LState, method string ) *lua.LFunction {
+func (r *vRouter) handleIndexFn(L *lua.LState, method string) *lua.LFunction {
 	fn := func(co *lua.LState) int {
 		path := co.CheckString(1)
 		chains := checkHandleChains(co)
-		r.r.Handle(method , path , func(ctx *RequestCtx) { chains.do(ctx , r.handler) })
+		r.r.Handle(method, path, func(ctx *RequestCtx) { chains.do(ctx, r.handler) })
 		return 0
 	}
 	return L.NewFunction(fn)
@@ -135,7 +135,7 @@ func (r *vRouter) anyIndexFn(L *lua.LState) *lua.LFunction {
 	fn := func(co *lua.LState) int {
 		path := co.CheckString(1)
 		chains := checkHandleChains(co)
-		r.r.ANY(path, func(ctx *fasthttp.RequestCtx) { chains.do(ctx , r.handler)})
+		r.r.ANY(path, func(ctx *fasthttp.RequestCtx) { chains.do(ctx, r.handler) })
 		return 0
 	}
 
@@ -145,40 +145,41 @@ func (r *vRouter) anyIndexFn(L *lua.LState) *lua.LFunction {
 func (r *vRouter) notFoundIndexFn(L *lua.LState) *lua.LFunction {
 	fn := func(co *lua.LState) int {
 		chains := checkHandleChains(co)
-		r.r.NotFound = func(ctx *fasthttp.RequestCtx) { chains.do(ctx , r.handler) }
+		r.r.NotFound = func(ctx *fasthttp.RequestCtx) { chains.do(ctx, r.handler) }
 		return 0
 	}
-	return L.NewFunction( fn )
+	return L.NewFunction(fn)
 
 }
 
-func (r *vRouter) fileIndexFn( L *lua.LState ) *lua.LFunction {
-	fn := func(vm *lua.LState ) int {
+func (r *vRouter) fileIndexFn(L *lua.LState) *lua.LFunction {
+	fn := func(vm *lua.LState) int {
 		n := vm.GetTop()
 		path := vm.CheckString(1)
 		root := vm.CheckString(2)
 		fs := &fasthttp.FS{
-			Root: root,
-			IndexNames: []string{"index.html"},
+			Root:               root,
+			IndexNames:         []string{"index.html"},
 			GenerateIndexPages: true,
-			AcceptByteRange: true,
+			AcceptByteRange:    true,
 		}
 
 		if n == 3 {
-			fn := vm.CheckFunction( 3 )
+			fn := vm.CheckFunction(3)
 			fs.PathRewrite = func(ctx *fasthttp.RequestCtx) []byte {
-				co := lua.State()
-				err := xcall.CallByEnv(co , fn , xcall.Rock)
+				co := newLuaThread(ctx)
+				err := xcall.CallByEnv(co, fn, xcall.Rock)
 				if err != nil {
+					logger.Errorf("%v" , err)
 					goto done
 				}
 			done:
-				lua.FreeState(co)
+				freeLuaThread(ctx)
 				return ctx.Path()
 			}
 		}
 
-		r.r.ServeFilesCustom(path , fs)
+		r.r.ServeFilesCustom(path, fs)
 
 		return 0
 	}
@@ -186,18 +187,17 @@ func (r *vRouter) fileIndexFn( L *lua.LState ) *lua.LFunction {
 	return L.NewFunction(fn)
 }
 
-func (r *vRouter) call( co *lua.LState , hook *lua.LFunction ) {
+func (r *vRouter) call(co *lua.LState, hook *lua.LFunction) {
 	if hook == nil {
 		return
 	}
-	err := xcall.CallByEnv(co , hook , xcall.Rock)
+	err := xcall.CallByEnv(co, hook, xcall.Rock)
 	if err != nil {
-		logger.Errorf("http hook call error: %v" , err)
+		logger.Errorf("http hook call error: %v", err)
 	}
 }
 
-
-func (r *vRouter) Index(L *lua.LState , key string) lua.LValue {
+func (r *vRouter) Index(L *lua.LState, key string) lua.LValue {
 	switch key {
 	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "CONNECT", "OPTIONS", "TRACE":
 		return r.handleIndexFn(L, key)
@@ -224,12 +224,12 @@ func (r *vRouter) do(ctx *RequestCtx) {
 
 	co := newLuaThread(ctx)
 	p := lua.P{
-		Fn: r.interceptor,
-		NRet: 0,
+		Fn:      r.interceptor,
+		NRet:    0,
 		Protect: true,
 	}
 
-	err := xcall.CallByParam(co , p , xcall.Rock)
+	err := xcall.CallByParam(co, p, xcall.Rock)
 	if err != nil {
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBodyString(err.Error())

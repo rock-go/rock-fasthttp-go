@@ -1,18 +1,18 @@
 package fasthttp
 
 import (
+	"bytes"
 	"errors"
-	"github.com/rock-go/rock/lua"
-	"github.com/rock-go/rock/logger"
-	"github.com/rock-go/rock/xcall"
 	"fmt"
+	"github.com/rock-go/rock/logger"
+	"github.com/rock-go/rock/lua"
+	"github.com/rock-go/rock/region"
+	"github.com/rock-go/rock/xcall"
+	"github.com/valyala/fasthttp"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
-	"bytes"
-	"github.com/rock-go/rock/region"
-	"github.com/valyala/fasthttp"
-	"runtime/debug"
 )
 
 func checkHandleChains(L *lua.LState) *HandleChains {
@@ -24,25 +24,25 @@ func checkHandleChains(L *lua.LState) *HandleChains {
 
 	hc := newHandleChains(n - 1)
 	var val lua.LValue
-	for i := 2 ; i<=n ; i++ {
+	for i := 2; i <= n; i++ {
 
 		val = L.Get(i)
 		switch val.Type() {
 
 		//判断是否为加载
 		case lua.LTString:
-			hc.Store(val.String() , VHSTRING, i - 2)
+			hc.Store(val.String(), VHSTRING, i-2)
 
-		case lua.LTLightUserData:
-			hd , ok := val.(*lua.LightUserData).Value.(*handle)
+		case lua.LTANYDATA:
+			hd, ok := val.(*lua.AnyData).Value.(*handle)
 			if !ok {
-				L.RaiseError("%d invalid http.handler" , i)
+				L.RaiseError("%d invalid http.handler", i)
 				return nil
 			}
-			hc.Store(hd , VHANDLER, i - 2)
+			hc.Store(hd, VHANDLER, i-2)
 
 		case lua.LTFunction:
-			hc.Store(val.(*lua.LFunction) , VHFUNC , i - 2)
+			hc.Store(val.(*lua.LFunction), VHFUNC, i-2)
 
 		default:
 			L.RaiseError("invalid handle value")
@@ -53,22 +53,22 @@ func checkHandleChains(L *lua.LState) *HandleChains {
 	return hc
 }
 
-
 var (
 	notFoundRouter = errors.New("not found router in co")
 	invalidRouter  = errors.New("invalid router in co")
 )
+
 func checkRouter(L *lua.LState) (*vRouter, error) {
 	if L.D == nil {
-		return nil , notFoundRouter
+		return nil, notFoundRouter
 	}
 
-	r  , ok := L.D.(*vRouter)
+	r, ok := L.D.(*vRouter)
 	if !ok {
-		return nil , invalidRouter
+		return nil, invalidRouter
 	}
 
-	return r , nil
+	return r, nil
 }
 
 func checkRequestCtx(L *lua.LState) *RequestCtx {
@@ -77,21 +77,21 @@ func checkRequestCtx(L *lua.LState) *RequestCtx {
 		return nil
 	}
 
-	ctx , ok := L.D.(*RequestCtx)
+	ctx, ok := L.D.(*RequestCtx)
 	if !ok {
 		return nil
 	}
 	return ctx
 }
 
-func checkRegionSdk(L *lua.LState , val lua.LValue) *region.Region {
+func checkRegionSdk(L *lua.LState, val lua.LValue) *region.Region {
 
 	switch val.Type() {
 	case lua.LTNil:
 		return nil
 
 	case lua.LTLightUserData:
-		r , ok := val.(*lua.LightUserData).Value.(*region.Region)
+		r, ok := val.(*lua.LightUserData).Value.(*region.Region)
 		if !ok {
 			L.RaiseError("invalid region sdk")
 			return nil
@@ -102,11 +102,11 @@ func checkRegionSdk(L *lua.LState , val lua.LValue) *region.Region {
 		//todo
 	}
 
-	L.RaiseError("invalid region object , got %s" , val.Type().String())
+	L.RaiseError("invalid region object , got %s", val.Type().String())
 	return nil
 }
 
-func checkOutputSdk(L *lua.LState , val lua.LValue) lua.Writer {
+func checkOutputSdk(L *lua.LState, val lua.LValue) lua.Writer {
 	switch val.Type() {
 	case lua.LTNil:
 		return nil
@@ -120,17 +120,17 @@ func checkOutputSdk(L *lua.LState , val lua.LValue) lua.Writer {
 		//todo
 	}
 
-	L.RaiseError("invalid output object , got %s" , val.Type().String())
+	L.RaiseError("invalid output object , got %s", val.Type().String())
 	return nil
 }
 
-func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte {
+func compileAccessFormat(format string, encode string) func(*RequestCtx) []byte {
 	if format == "" || format == "off" {
 		return nil
 	}
 	format = strings.TrimSpace(format)
 
-	a := strings.Split(format , ",")
+	a := strings.Split(format, ",")
 	var fn func(ctx *RequestCtx) []byte
 	switch encode {
 	case "json":
@@ -141,23 +141,26 @@ func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte
 			}
 
 			buff := lua.NewJsonBuffer("")
-			for i := 0 ; i < n ;i++ {
+			for i := 0; i < n; i++ {
 				item := a[i]
-				val := fsGet(ctx , item)
-				if strings.HasPrefix(item , "http_") {
+				val := fsGet(ctx, item)
+				if strings.HasPrefix(item, "http_") {
 					item = item[5:]
 				}
 
 				//避免JSON 最后一个逗号
-				if i == n - 1 {
+				if i == n-1 {
 					buff.EOF = true
 				}
 
 				switch val.Type() {
 				case lua.LTNumber:
-					buff.WriteKI(item , int(val.(lua.LNumber)))
+					buff.WriteKI(item, int(val.(lua.LNumber)))
+				case lua.LTINT:
+					buff.WriteKI(item, int(val.(lua.LInt)))
+
 				default:
-					buff.WriteKV(item , val.String())
+					buff.WriteKV(item, val.String())
 				}
 			}
 			buff.End()
@@ -171,16 +174,16 @@ func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte
 				return byteNull
 			}
 			var buff bytes.Buffer
-			for i:=0;i<n;i++ {
+			for i := 0; i < n; i++ {
 
 				if i != 0 {
 					buff.WriteByte(' ')
 				}
 				item := a[i]
-				val := fsGet(ctx ,item)
+				val := fsGet(ctx, item)
 
 				//去除前缀
-				if strings.HasPrefix(item , "http_") {
+				if strings.HasPrefix(item, "http_") {
 					item = item[5:]
 				}
 				switch val.Type() {
@@ -200,77 +203,77 @@ func compileAccessFormat(format string , encode string) func(*RequestCtx) []byte
 	return fn
 }
 
-func compileHandle(filename string , args ...interface{}) (PoolItemIFace , error) {
+func compileHandle(filename string, args ...interface{}) (PoolItemIFace, error) {
 	//重新获取
 	co := lua.State()
 	defer lua.FreeState(co)
-	stat , err := os.Stat(filename)
+	stat, err := os.Stat(filename)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
-	fn , err := co.LoadFile(filename)
+	fn, err := co.LoadFile(filename)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
 	p := lua.P{
-		Fn: fn,
-		NRet: 1,
+		Fn:      fn,
+		NRet:    1,
 		Protect: true,
 	}
 
-	err = xcall.CallByParam(co , p , xcall.Rock)
+	err = xcall.CallByParam(co, p, xcall.Rock)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
 	n := co.GetTop()
 	if n != 1 {
-		return nil , errors.New("not found handle object , top: %d" + strconv.Itoa(n))
+		return nil, errors.New("not found handle object , top: %d" + strconv.Itoa(n))
 	}
 
 	val := co.Get(n)
 	if val.Type() != lua.LTLightUserData {
-		return nil , errors.New("invalid handle light userdata")
+		return nil, errors.New("invalid handle light userdata")
 	}
 
-	hd , ok := val.(*lua.LightUserData).Value.(*handle)
+	hd, ok := val.(*lua.AnyData).Value.(*handle)
 	if !ok {
-		return nil , errors.New("invalid handle object")
+		return nil, errors.New("invalid handle object")
 	}
 	hd.mtime = stat.ModTime().Unix()
 	hd.name = filename
 
-	logger.Errorf("handle %s compile succeed" , filename)
-	return hd , nil
+	logger.Errorf("handle %s compile succeed", filename)
+	return hd, nil
 
 }
-func requireHandle( path , name string ) (*handle , error) {
-	filename := fmt.Sprintf("%s/%s.lua" , path , name)
+func requireHandle(path, name string) (*handle, error) {
+	filename := fmt.Sprintf("%s/%s.lua", path, name)
 
 	//查看缓存
 	item := handlePool.Get(filename)
 	if item != nil {
-		return item.val.(*handle) , nil
+		return item.val.(*handle), nil
 	}
 
-	hd , err := compileHandle(filename)
+	hd, err := compileHandle(filename)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
-	handlePool.insert(filename , hd)
-	return hd.(*handle) , nil
+	handlePool.insert(filename, hd)
+	return hd.(*handle), nil
 
 }
 
-func compileRouter(filename string , args ...interface{}) (PoolItemIFace , error) {
+func compileRouter(filename string, args ...interface{}) (PoolItemIFace, error) {
 
 	//重新获取
-	stat , err := os.Stat(filename)
+	stat, err := os.Stat(filename)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 	var r *vRouter
 
@@ -278,49 +281,49 @@ func compileRouter(filename string , args ...interface{}) (PoolItemIFace , error
 	defer lua.FreeState(co)
 
 	//执行配置脚本
-	err = xcall.DoFileByEnv(co , filename , xcall.Rock)
+	err = xcall.DoFileByEnv(co, filename, xcall.Rock)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
-	r , err = checkRouter(co)
+	r, err = checkRouter(co)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
 	r.handler = args[0].(string)
 	r.name = filename
 	r.mtime = stat.ModTime().Unix()
-	logger.Errorf("router %s compile succeed" , filename)
-	return r , nil
+	logger.Errorf("router %s compile succeed", filename)
+	return r, nil
 
 }
 
-func requireRouter(path , handler, host string) (*vRouter , error) {
-	filename := fmt.Sprintf("%s/%s.lua" , path , host)
+func requireRouter(path, handler, host string) (*vRouter, error) {
+	filename := fmt.Sprintf("%s/%s.lua", path, host)
 
 	//查看缓存
 	item := routerPool.Get(filename)
 	if item != nil {
-		return item.val.(*vRouter) , nil
+		return item.val.(*vRouter), nil
 	}
 
-	r , err := compileRouter(filename , handler)
+	r, err := compileRouter(filename, handler)
 	if err != nil {
-		return nil , err
+		return nil, err
 	}
 
-	routerPool.insert(filename , r)
-	return r.(*vRouter) , err
+	routerPool.insert(filename, r)
+	return r.(*vRouter), err
 }
 
-func checkLuaEof( ctx *RequestCtx) bool {
+func checkLuaEof(ctx *RequestCtx) bool {
 	uv := ctx.UserValue(eof_uv_key)
 	if uv == nil {
 		return false
 	}
 
-	v , ok := uv.(bool)
+	v, ok := uv.(bool)
 	if !ok {
 		return false
 	}
@@ -328,8 +331,8 @@ func checkLuaEof( ctx *RequestCtx) bool {
 	return v
 }
 
-func panicHandler( ctx *RequestCtx , val interface{}) {
+func panicHandler(ctx *RequestCtx, val interface{}) {
 	ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
-	e := fmt.Sprintf("%v %s" , val , debug.Stack())
+	e := fmt.Sprintf("%v %s", val, debug.Stack())
 	ctx.Response.SetBodyString(e)
 }

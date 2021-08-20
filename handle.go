@@ -1,12 +1,11 @@
 package fasthttp
 
 import (
-	"github.com/rock-go/rock/lua"
-	"github.com/rock-go/rock/logger"
-	"github.com/valyala/fasthttp"
-	"time"
 	"errors"
+	"github.com/rock-go/rock/logger"
+	"github.com/rock-go/rock/lua"
 	"github.com/rock-go/rock/xcall"
+	"github.com/valyala/fasthttp"
 	"sync/atomic"
 )
 
@@ -17,40 +16,38 @@ const (
 )
 
 var (
-	emptyHandle = errors.New("empty handle object")
+	emptyHandle        = errors.New("empty handle object")
 	rockFasthttpHeader = "rock-fasthttp-go v1.0"
 )
 
 type handleType int
 
 type handle struct {
-	lua.Super
-
 	//必须字段
 	name   string
 	mtime  int64
-	uptime time.Time
-	state  lua.LightUserDataStatus
 
 	//业务字段
 	count  uint32
 	filter *filter
 
 	//返回包处理
-	code    int
-	header  *header
-	hook    *lua.LFunction
-	close   *lua.LFunction
+	code   int
+	header *header
+	hook   *lua.LFunction
+	close  *lua.LFunction
 	//返回结果
-	body   []byte
+	body []byte
 
 	//结束匹配
-	eof     bool
+	eof bool
 }
 
 func newHandle(name string) *handle {
-	return &handle{ name: name , eof: false}
+	return &handle{name: name, eof: false}
 }
+
+func (hd *handle) DisableReflect() {}
 
 func (hd *handle) Close() error {
 	if hd.close == nil {
@@ -59,7 +56,7 @@ func (hd *handle) Close() error {
 	co := lua.State()
 	defer lua.FreeState(co)
 
-	return xcall.CallByEnv(co , hd.close , xcall.Rock)
+	return xcall.CallByEnv(co, hd.close, xcall.Rock)
 }
 
 func (hd *handle) MTime() int64 {
@@ -70,8 +67,8 @@ func (hd *handle) Option() interface{} {
 	return nil
 }
 
-func (hd *handle) do(co *lua.LState , ctx *RequestCtx) error {
-	atomic.AddUint32(&hd.count , 1)
+func (hd *handle) do(co *lua.LState, ctx *RequestCtx) error {
+	atomic.AddUint32(&hd.count, 1)
 
 	if hd.filter == nil {
 		goto set
@@ -85,17 +82,16 @@ func (hd *handle) do(co *lua.LState , ctx *RequestCtx) error {
 
 set:
 	//设置header
-	ctx.Response.Header.Set("server" , rockFasthttpHeader)
+	ctx.Response.Header.Set("server", rockFasthttpHeader)
 	if hd.header != nil {
 		hd.header.ForEach(func(key string, val string) {
-			ctx.Response.Header.Set(key , val)
+			ctx.Response.Header.Set(key, val)
 		})
 	}
 
 	if hd.code == 0 && hd.hook == nil && hd.body == nil {
 		return emptyHandle
 	}
-
 
 	//设置状态
 	if hd.code != 0 {
@@ -110,10 +106,56 @@ set:
 
 	//运行hook
 	if hd.hook != nil {
-		return xcall.CallByEnv(co , hd.hook , xcall.Rock)
+		return xcall.CallByEnv(co, hd.hook, xcall.Rock)
 	}
 
 	return nil
+}
+
+func (hd *handle) Set(L *lua.LState , key string , val lua.LValue) {
+	switch key {
+	case "code":
+		if val.Type() != lua.LTNumber {
+			L.RaiseError("invalid handle code , must be int")
+			return
+		}
+		hd.code = int(val.(lua.LNumber))
+
+	case "filter":
+		hd.filter = toFilter(L , val)
+
+	case "header":
+		hd.header = toHeader(L , val)
+
+	case "hook":
+		if val.Type() != lua.LTFunction {
+			L.RaiseError("invalid handle hook , must be function")
+			return
+		}
+		hd.hook = val.(*lua.LFunction)
+	case "close":
+		if val.Type() != lua.LTFunction {
+			return
+		}
+		hd.close = val.(*lua.LFunction)
+
+	case "eof":
+		if val.Type() != lua.LTBool {
+			L.RaiseError("invalid handle eof , must be bool")
+			return
+		}
+		hd.eof = bool(val.(lua.LBool))
+
+	case "body":
+		if val.Type() != lua.LTString {
+			L.RaiseError("invalid handle body")
+			return
+		}
+		hd.body = lua.S2B(val.String())
+
+	case "file":
+
+	}
 }
 
 func newLuaHandle(L *lua.LState) int {
@@ -126,61 +168,10 @@ func newLuaHandle(L *lua.LState) int {
 			return
 		}
 
-		switch key.String() {
-
-		case "code":
-			if val.Type() != lua.LTNumber {
-				L.RaiseError("invalid handle code , must be int")
-				return
-			}
-			hd.code = int(val.(lua.LNumber))
-
-		case "filter":
-			f , err := checkFilter(val)
-			if err != nil {
-				L.RaiseError("invalid handle filter , %v" , err)
-				return
-
-			}
-			hd.filter = f
-
-		case "header":
-			h , err := checkHeader(val)
-			if err != nil {
-				L.RaiseError("invalid handle header , %v" , err)
-				return
-			}
-			hd.header = h
-
-		case "hook":
-			if val.Type() != lua.LTFunction {
-				L.RaiseError("invalid handle hook , must be function")
-				return
-			}
-			hd.hook = val.(*lua.LFunction)
-		case "close":
-			if val.Type() != lua.LTFunction {
-				return
-			}
-			hd.close = val.(*lua.LFunction)
-
-		case "eof":
-			if val.Type() != lua.LTBool {
-				L.RaiseError("invalid handle eof , must be bool")
-				return
-			}
-			hd.eof = bool(val.(lua.LBool))
-
-		case "body":
-			if val.Type() != lua.LTString {
-				L.RaiseError("invalid handle body")
-				return
-			}
-			hd.body = lua.S2B(val.String())
-		}
+		hd.Set(L , key.String() , val)
 	})
 
-	L.Push(lua.NewLightUserData(hd))
+	L.Push(L.NewAnyData(hd))
 	return 1
 }
 
@@ -192,15 +183,15 @@ type HandleChains struct {
 
 func newHandleChains(cap int) *HandleChains {
 	return &HandleChains{
-		data: make([]interface{} , cap),
+		data: make([]interface{}, cap),
 		mask: make([]handleType, cap),
-		cap: cap,
+		cap:  cap,
 	}
 }
 
-func (hc *HandleChains) Store( v interface{} , mask handleType, offset int) {
+func (hc *HandleChains) Store(v interface{}, mask handleType, offset int) {
 	if offset > hc.cap {
-		logger.Errorf("vHandle overflower , cap:%d , got: %d" , hc.cap , offset)
+		logger.Errorf("vHandle overflower , cap:%d , got: %d", hc.cap, offset)
 		return
 	}
 
@@ -210,17 +201,18 @@ func (hc *HandleChains) Store( v interface{} , mask handleType, offset int) {
 
 //没有匹配的Handle代码
 var notFoundBody = []byte("not found handle")
-func (hc *HandleChains) notFound( ctx *RequestCtx) {
+
+func (hc *HandleChains) notFound(ctx *RequestCtx) {
 	ctx.Response.SetStatusCode(fasthttp.StatusNotFound)
 	ctx.Response.SetBody(notFoundBody)
 }
 
-func (hc *HandleChains) invalid(ctx *RequestCtx , body string) {
+func (hc *HandleChains) invalid(ctx *RequestCtx, body string) {
 	ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
 	ctx.Response.SetBodyString(body)
 }
 
-func (hc *HandleChains) do(ctx *RequestCtx , path string) { //path handle 查找路径
+func (hc *HandleChains) do(ctx *RequestCtx, path string) { //path handle 查找路径
 	if hc.cap == 0 {
 		hc.notFound(ctx)
 		return
@@ -231,20 +223,20 @@ func (hc *HandleChains) do(ctx *RequestCtx , path string) { //path handle 查找
 	var eof bool
 
 	co := newLuaThread(ctx)
-	for i := 0 ; i < hc.cap ; i++ {
+	for i := 0; i < hc.cap; i++ {
 		switch hc.mask[i] {
 
-		 //字符串
+		//字符串
 		case VHSTRING:
-			item , err = requireHandle(path , hc.data[i].(string))
+			item, err = requireHandle(path, hc.data[i].(string))
 			if err != nil {
-				hc.invalid(ctx , err.Error())
+				hc.invalid(ctx, err.Error())
 				return
 			}
 
-			err = item.do(co , ctx)
+			err = item.do(co, ctx)
 			if err != nil {
-				hc.invalid(ctx , err.Error())
+				hc.invalid(ctx, err.Error())
 				return
 			}
 			eof = item.eof
@@ -252,29 +244,28 @@ func (hc *HandleChains) do(ctx *RequestCtx , path string) { //path handle 查找
 		//处理对象
 		case VHANDLER:
 			item = hc.data[i].(*handle)
-			err = item.do(co , ctx)
+			err = item.do(co, ctx)
 			if err != nil {
-				hc.invalid(ctx , err.Error())
+				hc.invalid(ctx, err.Error())
 				return
 			}
 
 			eof = item.eof
 
 		case VHFUNC:
-			if e := xcall.CallByEnv(co ,
-				hc.data[i].(*lua.LFunction) , xcall.Rock);
-			e != nil {
-				hc.invalid(ctx , e.Error())
+			if e := xcall.CallByEnv(co,
+				hc.data[i].(*lua.LFunction), xcall.Rock); e != nil {
+				hc.invalid(ctx, e.Error())
 				return
 			}
 
 		//异常
 		default:
-			hc.invalid(ctx , "invalid handle type")
+			hc.invalid(ctx, "invalid handle type")
 			return
 		}
 
-		if eof || checkLuaEof(ctx){
+		if eof || checkLuaEof(ctx) {
 			return
 		}
 

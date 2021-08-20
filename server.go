@@ -1,13 +1,13 @@
 package fasthttp
 
 import (
-	"os"
-	"net"
-	"time"
+	"github.com/rock-go/rock/logger"
 	"github.com/rock-go/rock/lua"
 	"github.com/valyala/fasthttp"
-	"github.com/rock-go/rock/logger"
 	"github.com/valyala/fasthttp/reuseport"
+	"net"
+	"os"
+	"time"
 )
 
 type server struct {
@@ -17,10 +17,10 @@ type server struct {
 	cfg *config
 
 	//监听
-	ln  net.Listener
+	ln net.Listener
 
 	//中间对象
-	fs  *fasthttp.Server
+	fs *fasthttp.Server
 
 	//
 	accessFn func(*RequestCtx) []byte
@@ -29,23 +29,18 @@ type server struct {
 	uptime time.Time
 
 	//状态
-	stat   lua.LightUserDataStatus
+	stat lua.LightUserDataStatus
 }
 
 func newServer(cfg *config) *server {
-	return &server{ cfg:cfg, stat: lua.INIT }
+	srv := &server{cfg: cfg }
+	srv.S = lua.INIT
+	srv.T = fasthttpTypeOf
+	return srv
 }
 
 func (ser *server) Name() string {
 	return ser.cfg.name
-}
-
-func (ser *server) Type() string {
-	return "fasthttp.server"
-}
-
-func (ser *server) State() lua.LightUserDataStatus {
-	return ser.stat
 }
 
 func (ser *server) Close() error {
@@ -57,7 +52,7 @@ func (ser *server) Close() error {
 	ser.stat = lua.CLOSE
 
 	if e := ser.fs.Shutdown(); e != nil {
-		logger.Errorf("%s fasthttp close error %v" , ser.Name() , e)
+		logger.Errorf("%s fasthttp close error %v", ser.Name(), e)
 		ser.stat = lua.PANIC
 		return e
 	}
@@ -65,16 +60,16 @@ func (ser *server) Close() error {
 	return nil
 }
 
-func (ser *server) Listen() (net.Listener , error) {
+func (ser *server) Listen() (net.Listener, error) {
 	if ser.cfg.reuseport == "on" {
-		return reuseport.Listen(ser.cfg.network , ser.cfg.listen)
+		return reuseport.Listen(ser.cfg.network, ser.cfg.listen)
 	}
-	return net.Listen(ser.cfg.network , ser.cfg.listen)
+	return net.Listen(ser.cfg.network, ser.cfg.listen)
 }
 
 func (ser *server) keepalive() bool {
 	if ser.cfg.keepalive == "on" {
-		return  true
+		return true
 	}
 	return false
 }
@@ -90,25 +85,25 @@ func (ser *server) notFound(ctx *RequestCtx) {
 		return
 	}
 
-	r , err := requireRouter(ser.cfg.router , ser.cfg.handler , ser.cfg.notFound)
+	r, err := requireRouter(ser.cfg.router, ser.cfg.handler, ser.cfg.notFound)
 	if err != nil {
 		if os.IsNotExist(err) {
 			ser.notFoundBody(ctx)
 			return
 		}
-		ser.invalid(ctx , err)
+		ser.invalid(ctx, err)
 		return
 	}
 	r.r.Handler(ctx)
 
 }
 
-func (ser *server) invalid(ctx *RequestCtx , err error) {
+func (ser *server) invalid(ctx *RequestCtx, err error) {
 	ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
 	ctx.Response.SetBodyString(err.Error())
 }
 
-func (ser *server) Region(r *vRouter , ctx *RequestCtx ) {
+func (ser *server) Region(r *vRouter, ctx *RequestCtx) {
 	region := ser.cfg.accessRegion
 	sdk := ser.cfg.accessRegionSdk
 	if r == nil {
@@ -128,24 +123,24 @@ done:
 		return
 	}
 
-	ip := fsGet(ctx , region).String()
+	ip := fsGet(ctx, region).String()
 	if len(ip) < 7 {
 		return
 	}
 
 	info, err := sdk.Search(ip)
 	if err != nil {
-		logger.Errorf("%v" , err)
+		logger.Errorf("%v", err)
 		return
 	}
 
-	ctx.SetUserValue("region" , info)
+	ctx.SetUserValue("region", info)
 	return
 
 }
 
-func (ser *server) Log( r *vRouter , ctx *RequestCtx ) {
-	fn  := ser.accessFn
+func (ser *server) Log(r *vRouter, ctx *RequestCtx) {
+	fn := ser.accessFn
 	sdk := ser.cfg.accessOutputSdk
 
 	if r == nil {
@@ -171,13 +166,13 @@ done:
 
 //编译
 func (ser *server) compile() {
-	ser.accessFn = compileAccessFormat(ser.cfg.accessFormat , ser.cfg.accessEncode)
+	ser.accessFn = compileAccessFormat(ser.cfg.accessFormat, ser.cfg.accessEncode)
 }
 
-func (ser *server) Handler( ctx *RequestCtx ) {
-	r , err := requireRouter(ser.cfg.router , ser.cfg.handler , lua.B2S(ctx.Host()))
+func (ser *server) Handler(ctx *RequestCtx) {
+	r, err := requireRouter(ser.cfg.router, ser.cfg.handler, lua.B2S(ctx.Host()))
 	//是否获取IP地址位置信息
-	ser.Region(r , ctx)
+	ser.Region(r, ctx)
 
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -185,31 +180,31 @@ func (ser *server) Handler( ctx *RequestCtx ) {
 			goto done
 		}
 
-		ser.invalid(ctx , err)
+		ser.invalid(ctx, err)
 		goto done
 	}
 
 	r.do(ctx)
 
 done:
-	ser.Log(r , ctx)
+	ser.Log(r, ctx)
 
 	//释放co
 	freeLuaThread(ctx)
 }
 
 func (ser *server) Start() error {
-	logger.Errorf("%s fasthttp start ..." , ser.Name())
+	logger.Errorf("%s fasthttp start ...", ser.Name())
 
-	ln , err := ser.Listen()
+	ln, err := ser.Listen()
 	if err != nil {
 		return err
 	}
 
 	ser.fs = &fasthttp.Server{
-		Handler: ser.Handler,
+		Handler:      ser.Handler,
 		TCPKeepalive: ser.keepalive(),
-		ReadTimeout: time.Duration(ser.cfg.readTimeout) * time.Second,
+		ReadTimeout:  time.Duration(ser.cfg.readTimeout) * time.Second,
 	}
 	ser.ln = ln
 	ser.compile()
@@ -230,4 +225,3 @@ func (ser *server) Start() error {
 	ser.stat = lua.RUNNING
 	return nil
 }
-

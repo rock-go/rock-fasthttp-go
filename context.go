@@ -1,50 +1,47 @@
 package fasthttp
 
 import (
+	"github.com/rock-go/rock/json"
 	"github.com/rock-go/rock/lua"
+	"github.com/rock-go/rock/region"
 	"net"
 	"strings"
-	"github.com/rock-go/rock/region"
-	"github.com/rock-go/rock/json"
 )
 
 type fsContext struct {
-	lua.NoReflect
 	meta lua.UserKV
 }
-
 
 func newContext() *lua.AnyData {
 	ctx := &fsContext{meta: lua.NewUserKV()}
 	ctx.initMeta()
-	return lua.NewAnyData( ctx )
+	return lua.NewAnyData(ctx)
 }
 
-
 func xPort(addr net.Addr) int {
-	x , ok := addr.(*net.TCPAddr)
+	x, ok := addr.(*net.TCPAddr)
 	if !ok {
 		return 0
 	}
 	return x.Port
 }
 
-func regionCityId( ctx *RequestCtx) int {
+func regionCityId(ctx *RequestCtx) int {
 	uv := ctx.UserValue("region_city")
-	v , ok := uv.(int)
+	v, ok := uv.(int)
 	if ok {
 		return v
 	}
 	return 0
 }
 
-func regionRaw( ctx *RequestCtx) []byte {
+func regionRaw(ctx *RequestCtx) []byte {
 	uv := ctx.UserValue("region")
 	if uv == nil {
 		return byteNull
 	}
 
-	v , ok := uv.(*region.Info)
+	v, ok := uv.(*region.Info)
 	if ok {
 		return v.Byte()
 	}
@@ -59,29 +56,29 @@ func fsSay(co *lua.LState) int {
 	}
 
 	ctx := checkRequestCtx(co)
-	data := make([]string , n)
-	for i := 1; i<=n;i++ {
-		data[i-1] = co.CheckString(i)
-	}
-	ctx.Response.SetBodyString(strings.Join(data , ""))
+	data := make([]string, n)
+	for i := 1; i <= n; i++ {
+		data[i-1] = co.CheckString(i)	}
+	ctx.Response.SetBodyString(strings.Join(data,
+""))
 	return 0
 }
 
 type ToJson interface {
-	ToJson() ([]byte , error)
+	ToJson() ([]byte, error)
 }
 
 func fsSayJson(co *lua.LState) int {
 	val := co.Get(1)
 	ctx := checkRequestCtx(co)
 
-	var v interface{ToJson() ([]byte , error)}
+	var v interface{ ToJson() ([]byte, error) }
 	switch obj := val.(type) {
 	case *lua.LightUserData:
 		v = obj.Value
 	case *lua.AnyData:
 		var ok bool
-		v , ok = obj.Value.(ToJson)
+		v, ok = obj.Value.(ToJson)
 		if !ok {
 			co.RaiseError("invalid toJson")
 			return 0
@@ -89,18 +86,18 @@ func fsSayJson(co *lua.LState) int {
 
 	case *lua.LUserData:
 		var ok bool
-		v , ok = obj.Value.(ToJson)
+		v, ok = obj.Value.(ToJson)
 		if !ok {
 			co.RaiseError("invalid toJson")
 			return 0
 		}
 	default:
-		co.RaiseError("invalid type , must object , got %s" , val.Type().String())
+		co.RaiseError("invalid type , must object , got %s", val.Type().String())
 		return 0
 	}
-	chunk , e := v.ToJson()
+	chunk, e := v.ToJson()
 	if e != nil {
-		ctx.Error(e.Error() , 500)
+		ctx.Error(e.Error(), 500)
 		return 0
 	}
 	ctx.SetBody(chunk)
@@ -113,12 +110,12 @@ func fsAppend(co *lua.LState) int {
 		return 0
 	}
 
-	data := make([]string , n)
+	data := make([]string, n)
 	ctx := checkRequestCtx(co)
-	for i := 1; i<=n;i++ {
+	for i := 1; i <= n; i++ {
 		data[i-1] = co.CheckString(i)
 	}
-	ctx.Response.AppendBody(lua.S2B(strings.Join(data , "")))
+	ctx.Response.AppendBody(lua.S2B(strings.Join(data, "")))
 	return 0
 }
 
@@ -126,13 +123,13 @@ func fsExit(co *lua.LState) int {
 	code := co.CheckInt(1)
 	ctx := checkRequestCtx(co)
 	ctx.Response.SetStatusCode(code)
-	ctx.SetUserValue(eof_uv_key , true)
+	ctx.SetUserValue(eof_uv_key, true)
 	return 0
 }
 
 func fsEof(co *lua.LState) int {
 	ctx := checkRequestCtx(co)
-	ctx.SetUserValue(eof_uv_key , true)
+	ctx.SetUserValue(eof_uv_key, true)
 	return 0
 }
 
@@ -146,7 +143,7 @@ func fsISERR(co *lua.LState) int {
 	if v.Type() == lua.LTNil {
 		return 0
 	}
-	co.RaiseError("%v" , v)
+	co.RaiseError("%v", v)
 	return 0
 }
 
@@ -158,12 +155,12 @@ func fsERR(co *lua.LState) int {
 	}
 
 	data := make([]interface{}, n)
-	format := make([]string , n)
-	for i := 1; i<=n;i++ {
+	format := make([]string, n)
+	for i := 1; i <= n; i++ {
 		format[i-1] = "%v "
 		data[i-1] = co.CheckAny(i)
 	}
-	co.RaiseError(strings.Join(format , " ") , data...)
+	co.RaiseError(strings.Join(format, " "), data...)
 	return 0
 }
 
@@ -173,25 +170,24 @@ func fsHeader(co *lua.LState) int {
 		return 0
 	}
 
-	if n % 2 != 0 {
+	if n%2 != 0 {
 		co.RaiseError("#args % 2 != 0")
 		return 0
 	}
 
 	ctx := checkRequestCtx(co)
 
-	for i := 0 ; i < n ; {
+	for i := 0; i < n; {
 		key := co.CheckString(i + 1)
 		val := co.CheckString(i + 2)
 		i += 2
-		ctx.Response.Header.Set(key , val)
+		ctx.Response.Header.Set(key, val)
 	}
 
 	return 0
-
 }
 
-func fsGet(ctx *RequestCtx , key string) lua.LValue {
+func fsGet(ctx *RequestCtx, key string) lua.LValue {
 	switch key {
 	//主机头
 	case "host":
@@ -205,13 +201,13 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 	case "remote_addr":
 		return lua.LString(ctx.RemoteIP().String())
 	case "remote_port":
-		return lua.LNumber(xPort(ctx.RemoteAddr()))
+		return lua.LInt(xPort(ctx.RemoteAddr()))
 
 	//服务器信息
 	case "server_addr":
 		return lua.LString(ctx.LocalIP().String())
 	case "server_port":
-		return lua.LNumber(xPort(ctx.LocalAddr()))
+		return lua.LInt(xPort(ctx.LocalAddr()))
 
 	//请求信息
 	case "uri":
@@ -225,15 +221,15 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 		return lua.LString(lua.B2S(ctx.Request.Header.Peek("referer")))
 
 	case "content_length":
-		return lua.LNumber(ctx.Request.Header.ContentLength())
+		return lua.LInt(ctx.Request.Header.ContentLength())
 	case "content_type":
 		return lua.LString(lua.B2S(ctx.Request.Header.ContentType()))
 
 	//返回结果
 	case "status":
-		return lua.LNumber(ctx.Response.StatusCode())
+		return lua.LInt(ctx.Response.StatusCode())
 	case "sent":
-		return lua.LNumber(ctx.Response.Header.ContentLength())
+		return lua.LInt(ctx.Response.Header.ContentLength())
 
 	//返回完整的数据
 	case "region_raw":
@@ -255,19 +251,23 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 
 		case strings.HasPrefix(key, "http_"):
 			item := lua.S2B(key[5:])
-			for i:=0;i<len(item);i++ { if item[i] == '_' { item[i] = '-' } }
+			for i := 0; i < len(item); i++ {
+				if item[i] == '_' {
+					item[i] = '-'
+				}
+			}
 			return lua.LString(lua.B2S(ctx.Request.Header.Peek(lua.B2S(item))))
 
 		case strings.HasPrefix(key, "cookie_"):
 			return lua.LString(lua.B2S(ctx.Request.Header.Cookie(key[7:])))
 
-		case strings.HasPrefix(key , "region_"):
+		case strings.HasPrefix(key, "region_"):
 			uv := ctx.UserValue("region")
 			if uv == nil {
 				return lua.LNil
 			}
 
-			info , ok := uv.(*region.Info)
+			info, ok := uv.(*region.Info)
 			if !ok {
 				return lua.LNil
 			}
@@ -276,7 +276,7 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 			case "city":
 				return lua.LString(lua.B2S(info.City()))
 			case "city_id":
-				return lua.LNumber(info.CityID())
+				return lua.LInt(info.CityID())
 			case "province":
 				return lua.LString(lua.B2S(info.Province()))
 			case "region":
@@ -286,7 +286,6 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 			default:
 				return lua.LNil
 			}
-
 
 		case strings.HasPrefix(key, "param_"):
 			uv := ctx.UserValue(key[6:])
@@ -312,31 +311,38 @@ func fsGet(ctx *RequestCtx , key string) lua.LValue {
 
 func luaFastJSON(L *lua.LState) int {
 	ctx := checkRequestCtx(L)
-	f , err := json.NewFastJson(ctx.Request.Body())
+	f, err := json.NewFastJson(ctx.Request.Body())
 	if err != nil {
-		L.RaiseError("json %v" , err)
+		L.RaiseError("json %v", err)
 		return 0
 	}
-	L.Push(L.NewAnyData( f ))
+	L.Push(L.NewAnyData(f))
 	return 1
 }
 
 func (fsc *fsContext) initMeta() {
-	fsc.meta.Set("say_json" , lua.NewFunction(fsSayJson))
-	fsc.meta.Set("say" , lua.NewFunction(fsSay))
-	fsc.meta.Set("append" , lua.NewFunction(fsAppend))
-	fsc.meta.Set("exit" , lua.NewFunction(fsExit))
-	fsc.meta.Set("eof" ,        lua.NewFunction(fsEof))
-	fsc.meta.Set("set_header" , lua.NewFunction(fsHeader))
-	fsc.meta.Set("ERR" , lua.NewFunction(fsERR))
-	fsc.meta.Set("bind_json" , lua.NewFunction(luaFastJSON))
-	fsc.meta.Set("file" , lua.NewFunction(newLuaFormFile))
+	fsc.meta.Set("say_json", lua.NewFunction(fsSayJson))
+	fsc.meta.Set("say", lua.NewFunction(fsSay))
+	fsc.meta.Set("append", lua.NewFunction(fsAppend))
+	fsc.meta.Set("exit", lua.NewFunction(fsExit))
+	fsc.meta.Set("eof", lua.NewFunction(fsEof))
+	fsc.meta.Set("set_header", lua.NewFunction(fsHeader))
+	fsc.meta.Set("ERR", lua.NewFunction(fsERR))
+	fsc.meta.Set("bind_json", lua.NewFunction(luaFastJSON))
+	fsc.meta.Set("file", lua.NewFunction(newLuaFormFile))
 }
 
-func (fsc *fsContext) Get(co *lua.LState , key string) lua.LValue {
+func (fsc *fsContext) Get(co *lua.LState, key string) lua.LValue {
 	ctx := checkRequestCtx(co)
 	if v := fsc.meta.Get(key); v != lua.LNil {
 		return v
 	}
-	return fsGet(ctx , key)
+	return fsGet(ctx, key)
 }
+
+func (fsc *fsContext) Set(co *lua.LState , key string , val lua.LValue) {
+	ctx := checkRequestCtx(co)
+	if key == "path" { ctx.URI().SetPath( val.String() ) }
+}
+
+func (fsc *fsContext) DisableReflect() {}

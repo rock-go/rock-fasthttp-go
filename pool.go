@@ -2,10 +2,10 @@ package fasthttp
 
 import (
 	"github.com/rock-go/rock/logger"
-	"sync"
+	"os"
 	"sort"
 	"strings"
-	"os"
+	"sync"
 )
 
 type poolItem struct {
@@ -15,17 +15,16 @@ type poolItem struct {
 	val   PoolItemIFace
 }
 
-
 type PoolItemIFace interface {
-	Close()  error
-	MTime()  int64
+	Close() error
+	MTime() int64
 	Option() interface{}
 }
 
 var byteNull = []byte("")
 
-func newPoolItem(key string , val PoolItemIFace) *poolItem {
-	return &poolItem{ key: key , val: val , count: 0}
+func newPoolItem(key string, val PoolItemIFace) *poolItem {
+	return &poolItem{key: key, val: val, count: 0}
 }
 
 func (pi *poolItem) Key() string {
@@ -36,7 +35,7 @@ func (pi *poolItem) Val() PoolItemIFace {
 	return pi.val
 }
 
-func (pi *poolItem) Update( val PoolItemIFace ) {
+func (pi *poolItem) Update(val PoolItemIFace) {
 	pi.val = val
 }
 
@@ -69,28 +68,28 @@ func (p *pool) cap() int {
 	return cap(p.v)
 }
 
-func (p *pool) Less(i , j int) bool {
+func (p *pool) Less(i, j int) bool {
 	if p.v[i].key == "" {
 		return true
 	}
 
-	if strings.Compare(p.v[i].key , p.v[j].key) == -1 {
+	if strings.Compare(p.v[i].key, p.v[j].key) == -1 {
 		return true
 	}
 	return false
 }
 
-func (p *pool) Swap(i , j int) {
+func (p *pool) Swap(i, j int) {
 	//先交换换当前索引
-	p.v[i].id , p.v[j].id = j , i
+	p.v[i].id, p.v[j].id = j, i
 
 	//在交换对象
-	p.v[i] , p.v[j] = p.v[j] , p.v[i]
+	p.v[i], p.v[j] = p.v[j], p.v[i]
 }
 
 func (p *pool) GetIdx(idx int) *poolItem {
 	if idx < 0 || idx > len(p.v) {
-		logger.Errorf("invalid pool id %d" , idx)
+		logger.Errorf("invalid pool id %d", idx)
 		return nil
 	}
 
@@ -102,13 +101,13 @@ func (p *pool) GetIdx(idx int) *poolItem {
 
 func (p *pool) Get(key string) *poolItem {
 	p.m.RLock()
-	i , j := 0 , p.Len()
+	i, j := 0, p.Len()
 
 	var val *poolItem = nil
 	for i < j {
-		h := int(uint(i + j) >> 1)
+		h := int(uint(i+j) >> 1)
 		item := p.v[h]
-		switch strings.Compare(key , item.key) {
+		switch strings.Compare(key, item.key) {
 		case 0:
 			val = item
 			goto done
@@ -124,15 +123,15 @@ done:
 	return val
 }
 
-func (p *pool) insert( key string , val PoolItemIFace ) {
+func (p *pool) insert(key string, val PoolItemIFace) {
 	p.m.Lock()
 	n := p.Len()
 	var item *poolItem
 
-	for i := 0 ; i < n ; i++ {
+	for i := 0; i < n; i++ {
 		item = p.v[i]
 		//字符串相等
-		if strings.EqualFold(item.key , key){
+		if strings.EqualFold(item.key, key) {
 			item.val = val
 			p.m.Unlock()
 			return //覆盖 不需要排序
@@ -148,13 +147,13 @@ func (p *pool) insert( key string , val PoolItemIFace ) {
 
 	if p.cap() > n {
 		p.v = p.v[:n+1]
-		item = newPoolItem(key , val)
+		item = newPoolItem(key, val)
 		item.key = key
 		item.val = val
 		p.v[n] = item
 		goto DONE
 	}
-	p.v = append(p.v , newPoolItem(key , val))
+	p.v = append(p.v, newPoolItem(key, val))
 
 DONE:
 	sort.Sort(p)
@@ -164,7 +163,7 @@ DONE:
 func (p *pool) reset() {
 	p.m.Lock()
 	n := p.Len()
-	for i := 0 ; i < n; i++ {
+	for i := 0; i < n; i++ {
 		p.v[i].clear()
 	}
 	p.v = p.v[:0]
@@ -175,9 +174,9 @@ func (p *pool) clear(prefix string) {
 	p.m.Lock()
 	n := p.Len()
 	k := 0
-	for i := 0 ; i < n; i++ {
-		if strings.HasPrefix(p.v[i].key , prefix) {
-			logger.Errorf("clear %s ... " , p.v[i].key)
+	for i := 0; i < n; i++ {
+		if strings.HasPrefix(p.v[i].key, prefix) {
+			logger.Errorf("clear %s ... ", p.v[i].key)
 			p.v[i].clear()
 			k++
 		}
@@ -188,33 +187,34 @@ func (p *pool) clear(prefix string) {
 	}
 
 	p.m.Unlock()
-	logger.Errorf("%s sync clear succeed" , prefix)
+	logger.Errorf("%s sync clear succeed", prefix)
 }
 
-type compileFn func(string , ...interface{}) ( PoolItemIFace , error )
-func (p *pool) sync( compile compileFn ) {
+type compileFn func(string, ...interface{}) (PoolItemIFace, error)
+
+func (p *pool) sync(compile compileFn) {
 	p.m.Lock()
 	n := p.Len()
 	del := 0
-	for i := 0 ; i < n ; i++ {
+	for i := 0; i < n; i++ {
 		item := p.v[i]
 		if item.key == "" {
 			continue
 		}
 
 		//判断是否存在
-		stat , err := os.Stat(item.key)
+		stat, err := os.Stat(item.key)
 		if os.IsNotExist(err) {
 			//关闭历史
-			if e := item.Val().Close() ; e != nil {
-				logger.Errorf("pool %s close error %v" , item.key , e)
+			if e := item.Val().Close(); e != nil {
+				logger.Errorf("pool %s close error %v", item.key, e)
 			} else {
-				logger.Errorf("pool %s close succeed" , item.key)
+				logger.Errorf("pool %s close succeed", item.key)
 
 			}
 			del++
 			p.v[i].clear()
-			logger.Errorf("pool %s delete" , item.key)
+			logger.Errorf("pool %s delete", item.key)
 			continue
 		}
 
@@ -224,24 +224,24 @@ func (p *pool) sync( compile compileFn ) {
 		}
 
 		//编译
-		if obj , e := compile(item.key , item.val.Option()); e != nil {
-			logger.Errorf("%s compile error %v" , item.key , e)
+		if obj, e := compile(item.key, item.val.Option()); e != nil {
+			logger.Errorf("%s compile error %v", item.key, e)
 			continue
 		} else {
 			if e2 := item.val.Close(); e2 != nil {
-				logger.Errorf("pool %s close error %v" , item.key , e2)
+				logger.Errorf("pool %s close error %v", item.key, e2)
 			} else {
-				logger.Errorf("pool %s close succeed" , item.key)
+				logger.Errorf("pool %s close succeed", item.key)
 			}
 			item.val = obj
-			logger.Errorf("%s compile succeed" , item.key)
+			logger.Errorf("%s compile succeed", item.key)
 		}
 	}
 
 	if del != 0 {
 		sort.Sort(p)
-		p.v = p.v[:n - del]
-		logger.Errorf("sync delete %d succeed" , del)
+		p.v = p.v[:n-del]
+		logger.Errorf("sync delete %d succeed", del)
 	}
 	p.m.Unlock()
 }
