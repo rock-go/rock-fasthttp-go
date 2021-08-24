@@ -44,16 +44,17 @@ func (ser *server) Name() string {
 }
 
 func (ser *server) Close() error {
-	if ser.stat == lua.CLOSE {
+	if ser.S == lua.CLOSE {
 		return nil
 	}
 	routerPool.clear(ser.cfg.router)
 	handlePool.clear(ser.cfg.handler)
-	ser.stat = lua.CLOSE
+	ser.S = lua.CLOSE
+	ser.ln.Close()
 
 	if e := ser.fs.Shutdown(); e != nil {
 		logger.Errorf("%s fasthttp close error %v", ser.Name(), e)
-		ser.stat = lua.PANIC
+		ser.S = lua.PANIC
 		return e
 	}
 
@@ -147,6 +148,11 @@ func (ser *server) Log(r *vRouter, ctx *RequestCtx) {
 		goto done
 	}
 
+	//关闭
+	if r.AccessLogOff() {
+		return
+	}
+
 	if r.accessFn != nil {
 		fn = r.accessFn
 	}
@@ -205,6 +211,7 @@ func (ser *server) Start() error {
 		Handler:      ser.Handler,
 		TCPKeepalive: ser.keepalive(),
 		ReadTimeout:  time.Duration(ser.cfg.readTimeout) * time.Second,
+		CloseOnShutdown: true,
 	}
 	ser.ln = ln
 	ser.compile()
@@ -218,10 +225,10 @@ func (ser *server) Start() error {
 
 	//处理异常
 	if err != nil {
-		ser.stat = lua.PANIC
+		ser.S = lua.PANIC
 		return err
 	}
 
-	ser.stat = lua.RUNNING
+	ser.S = lua.RUNNING
 	return nil
 }

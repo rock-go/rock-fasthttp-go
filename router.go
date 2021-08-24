@@ -95,6 +95,10 @@ func newLuaRouter(co *lua.LState) int {
 	return 1
 }
 
+func (r *vRouter) AccessLogOff() bool {
+	return r.accessFormat == "off"
+}
+
 func (r *vRouter) Close() error {
 	if r.close == nil {
 		return nil

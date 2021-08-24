@@ -191,39 +191,39 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 	switch key {
 	//主机头
 	case "host":
-		return lua.LString(lua.B2S(ctx.Request.Host()))
+		return lua.S2L(lua.B2S(ctx.Request.Host()))
 
 	//浏览器标识
 	case "ua":
-		return lua.LString(lua.B2S(ctx.Request.Header.UserAgent()))
+		return lua.S2L(lua.B2S(ctx.Request.Header.UserAgent()))
 
 	//客户端信息
 	case "remote_addr":
-		return lua.LString(ctx.RemoteIP().String())
+		return lua.S2L(ctx.RemoteIP().String())
 	case "remote_port":
 		return lua.LInt(xPort(ctx.RemoteAddr()))
 
 	//服务器信息
 	case "server_addr":
-		return lua.LString(ctx.LocalIP().String())
+		return lua.S2L(ctx.LocalIP().String())
 	case "server_port":
 		return lua.LInt(xPort(ctx.LocalAddr()))
 
 	//请求信息
 	case "uri":
-		return lua.LString(lua.B2S(ctx.URI().Path()))
+		return lua.S2L(lua.B2S(ctx.URI().Path()))
 	case "full_uri":
-		return lua.LString(ctx.URI().String())
+		return lua.S2L(ctx.URI().String())
 
 	case "query":
-		return lua.LString(lua.B2S(ctx.URI().QueryString()))
+		return lua.S2L(lua.B2S(ctx.URI().QueryString()))
 	case "referer":
-		return lua.LString(lua.B2S(ctx.Request.Header.Peek("referer")))
+		return lua.S2L(lua.B2S(ctx.Request.Header.Peek("referer")))
 
 	case "content_length":
 		return lua.LInt(ctx.Request.Header.ContentLength())
 	case "content_type":
-		return lua.LString(lua.B2S(ctx.Request.Header.ContentType()))
+		return lua.S2L(lua.B2S(ctx.Request.Header.ContentType()))
 
 	//返回结果
 	case "status":
@@ -233,21 +233,21 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 
 	//返回完整的数据
 	case "region_raw":
-		return lua.LString(regionRaw(ctx))
+		return lua.B2L(regionRaw(ctx))
 	case "header_raw":
-		return lua.LString(ctx.Request.Header.String())
+		return lua.B2L(ctx.Request.Header.RawHeaders())
 	case "cookie_raw":
-		return lua.LString(lua.B2S(ctx.Request.Header.Peek("cookie")))
+		return lua.B2L(ctx.Request.Header.Peek("cookie"))
 	case "body_raw":
-		return lua.LString(lua.B2S(ctx.Request.Body()))
+		return lua.B2L(ctx.Request.Body())
 
 	default:
 		switch {
 		case strings.HasPrefix(key, "arg_"):
-			return lua.LString(lua.B2S(ctx.QueryArgs().Peek(key[4:])))
+			return lua.B2L(ctx.QueryArgs().Peek(key[4:]))
 
 		case strings.HasPrefix(key, "post_"):
-			return lua.LString(lua.B2S(ctx.PostArgs().Peek(key[5:])))
+			return lua.B2L(ctx.PostArgs().Peek(key[5:]))
 
 		case strings.HasPrefix(key, "http_"):
 			item := lua.S2B(key[5:])
@@ -256,10 +256,10 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 					item[i] = '-'
 				}
 			}
-			return lua.LString(lua.B2S(ctx.Request.Header.Peek(lua.B2S(item))))
+			return lua.B2L(ctx.Request.Header.Peek(lua.B2S(item)))
 
 		case strings.HasPrefix(key, "cookie_"):
-			return lua.LString(lua.B2S(ctx.Request.Header.Cookie(key[7:])))
+			return lua.B2L(ctx.Request.Header.Cookie(key[7:]))
 
 		case strings.HasPrefix(key, "region_"):
 			uv := ctx.UserValue("region")
@@ -274,15 +274,15 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 
 			switch key[7:] {
 			case "city":
-				return lua.LString(lua.B2S(info.City()))
+				return lua.B2L(info.City())
 			case "city_id":
 				return lua.LInt(info.CityID())
 			case "province":
-				return lua.LString(lua.B2S(info.Province()))
+				return lua.B2L(info.Province())
 			case "region":
-				return lua.LString(lua.B2S(info.Region()))
+				return lua.B2L(info.Region())
 			case "isp":
-				return lua.LString(lua.B2S(info.ISP()))
+				return lua.B2L(info.ISP())
 			default:
 				return lua.LNil
 			}
@@ -293,13 +293,13 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 			case lua.LValue:
 				return s
 			case string:
-				return lua.LString(s)
+				return lua.S2L(s)
 			case int:
 				return lua.LNumber(s)
 			case interface{ String() string }:
-				return lua.LString(s.String())
+				return lua.S2L(s.String())
 			case interface{ Byte() []byte }:
-				return lua.LString(lua.B2S(s.Byte()))
+				return lua.B2L(s.Byte())
 			default:
 				return lua.LNil
 			}
