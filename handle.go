@@ -67,7 +67,7 @@ func (hd *handle) Option() interface{} {
 	return nil
 }
 
-func (hd *handle) do(co *lua.LState, ctx *RequestCtx) error {
+func (hd *handle) do(co *lua.LState, ctx *RequestCtx , eof *bool) error {
 	atomic.AddUint32(&hd.count, 1)
 
 	if hd.filter == nil {
@@ -78,7 +78,10 @@ func (hd *handle) do(co *lua.LState, ctx *RequestCtx) error {
 		goto set
 	}
 
-	return nil
+	//如果没有命中 eof 掉
+
+	*eof = false
+	return  nil
 
 set:
 	//设置header
@@ -109,6 +112,7 @@ set:
 		return xcall.CallByEnv(co, hd.hook, xcall.Rock)
 	}
 
+	*eof = true
 	return nil
 }
 
@@ -234,23 +238,20 @@ func (hc *HandleChains) do(ctx *RequestCtx, path string) { //path handle 查找�
 				return
 			}
 
-			err = item.do(co, ctx)
+			err = item.do(co, ctx , &eof)
 			if err != nil {
 				hc.invalid(ctx, err.Error())
 				return
 			}
-			eof = item.eof
 
 		//处理对象
 		case VHANDLER:
 			item = hc.data[i].(*handle)
-			err = item.do(co, ctx)
+			err = item.do(co, ctx , &eof)
 			if err != nil {
 				hc.invalid(ctx, err.Error())
 				return
 			}
-
-			eof = item.eof
 
 		case VHFUNC:
 			if e := xcall.CallByEnv(co,

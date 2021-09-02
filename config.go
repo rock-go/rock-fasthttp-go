@@ -23,6 +23,7 @@ type config struct {
 	notFound    string
 	daemon      string
 	readTimeout int
+	idleTimeout int
 	//设置access日志
 	accessFormat string
 	accessEncode string
@@ -74,6 +75,13 @@ func newConfig(L *lua.LState) *config {
 				return
 			}
 			cfg.readTimeout = int(n)
+		case "idle_timeout":
+			n, ok := val.(lua.LNumber)
+			if !ok {
+				L.RaiseError("idle_timeout must be int , got %s", val.Type().String())
+				return
+			}
+			cfg.idleTimeout = int(n)
 
 		case "access_format":
 			cfg.accessFormat = val.String()

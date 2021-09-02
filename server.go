@@ -49,8 +49,6 @@ func (ser *server) Close() error {
 	}
 	routerPool.clear(ser.cfg.router)
 	handlePool.clear(ser.cfg.handler)
-	ser.S = lua.CLOSE
-	ser.ln.Close()
 
 	if e := ser.fs.Shutdown(); e != nil {
 		logger.Errorf("%s fasthttp close error %v", ser.Name(), e)
@@ -58,6 +56,7 @@ func (ser *server) Close() error {
 		return e
 	}
 
+	ser.S = lua.CLOSE
 	return nil
 }
 
@@ -211,6 +210,7 @@ func (ser *server) Start() error {
 		Handler:      ser.Handler,
 		TCPKeepalive: ser.keepalive(),
 		ReadTimeout:  time.Duration(ser.cfg.readTimeout) * time.Second,
+		IdleTimeout:  time.Duration(ser.cfg.idleTimeout) * time.Second,
 		CloseOnShutdown: true,
 	}
 	ser.ln = ln

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/rock-go/rock/json"
 	"github.com/rock-go/rock/logger"
 	"github.com/rock-go/rock/lua"
 	"github.com/rock-go/rock/region"
@@ -139,31 +140,27 @@ func compileAccessFormat(format string, encode string) func(*RequestCtx) []byte 
 			if n == 0 {
 				return []byte("[]")
 			}
+			buff := json.NewBuffer()
 
-			buff := lua.NewJsonBuffer("")
+			buff.Tab("")
+			//buff := lua.NewJsonBuffer("")
 			for i := 0; i < n; i++ {
 				item := a[i]
 				val := fsGet(ctx, item)
-				if strings.HasPrefix(item, "http_") {
-					item = item[5:]
-				}
-
-				//避免JSON 最后一个逗号
-				if i == n-1 {
-					buff.EOF = true
-				}
 
 				switch val.Type() {
 				case lua.LTNumber:
-					buff.WriteKI(item, int(val.(lua.LNumber)))
+					buff.KI(item, int(val.(lua.LNumber)))
 				case lua.LTINT:
-					buff.WriteKI(item, int(val.(lua.LInt)))
+					buff.KI(item, int(val.(lua.LInt)))
 
 				default:
-					buff.WriteKV(item, val.String())
+					buff.KV(item, val.String())
 				}
 			}
-			buff.End()
+
+			buff.End("}")
+
 			return buff.Bytes()
 		}
 
@@ -182,15 +179,14 @@ func compileAccessFormat(format string, encode string) func(*RequestCtx) []byte 
 				item := a[i]
 				val := fsGet(ctx, item)
 
-				//去除前缀
-				if strings.HasPrefix(item, "http_") {
-					item = item[5:]
-				}
 				switch val.Type() {
 				case lua.LTNumber:
 					buff.WriteString(strconv.Itoa(int(val.(lua.LNumber))))
+				case lua.LTINT:
+					buff.WriteString(strconv.Itoa(int(val.(lua.LInt))))
+
 				default:
-					buff.Write(lua.S2B(val.String()))
+					buff.WriteString(val.String())
 				}
 			}
 			return buff.Bytes()

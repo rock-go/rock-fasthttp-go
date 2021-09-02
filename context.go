@@ -191,11 +191,11 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 	switch key {
 	//主机头
 	case "host":
-		return lua.S2L(lua.B2S(ctx.Request.Host()))
+		return lua.B2L( ctx.Host() )
 
 	//浏览器标识
 	case "ua":
-		return lua.S2L(lua.B2S(ctx.Request.Header.UserAgent()))
+		return lua.B2L(ctx.UserAgent())
 
 	//客户端信息
 	case "remote_addr":
