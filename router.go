@@ -12,7 +12,6 @@ import (
 type RequestCtx = fasthttp.RequestCtx
 
 type vRouter struct {
-	lua.Super
 
 	//获取名称
 	name string
@@ -39,8 +38,7 @@ type vRouter struct {
 	r *router.Router
 }
 
-func newRouter(co *lua.LState) *vRouter {
-	tab := co.CheckAny(1)
+func newRouter(co *lua.LState , tab lua.LValue) *vRouter {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -89,9 +87,9 @@ func newRouter(co *lua.LState) *vRouter {
 }
 
 func newLuaRouter(co *lua.LState) int {
-	r := newRouter(co)
+	r := newRouter(co , co.CheckAny(1))
 	co.D = r
-	co.Push(co.NewLightUserData(r))
+	co.Push(co.NewAnyData(r))
 	return 1
 }
 
@@ -103,10 +101,8 @@ func (r *vRouter) Close() error {
 	if r.close == nil {
 		return nil
 	}
-	co := lua.State()
-	defer lua.FreeState(co)
 
-	return xcall.CallByEnv(co, r.close, xcall.Rock)
+	return xcall.PCall(xcall.Rock , r.close)
 }
 
 func (r *vRouter) MTime() int64 {
@@ -201,7 +197,7 @@ func (r *vRouter) call(co *lua.LState, hook *lua.LFunction) {
 	}
 }
 
-func (r *vRouter) Index(L *lua.LState, key string) lua.LValue {
+func (r *vRouter) Get(L *lua.LState, key string) lua.LValue {
 	switch key {
 	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "CONNECT", "OPTIONS", "TRACE":
 		return r.handleIndexFn(L, key)

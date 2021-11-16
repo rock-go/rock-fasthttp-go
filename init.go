@@ -34,7 +34,5 @@ func init() {
 				handlePool.sync(compileHandle)
 			}
 		}()
-		//go routerPoolSync()
-		//go handlePoolSync()
 	})
 }

@@ -75,7 +75,13 @@ func fsSayJson(co *lua.LState) int {
 	var v interface{ ToJson() ([]byte, error) }
 	switch obj := val.(type) {
 	case *lua.LightUserData:
-		v = obj.Value
+		var ok bool
+		v , ok = obj.Value.(ToJson)
+		if !ok {
+			co.RaiseError("invalid toJson")
+			return 0
+		}
+
 	case *lua.AnyData:
 		var ok bool
 		v, ok = obj.Value.(ToJson)
@@ -208,6 +214,9 @@ func fsGet(ctx *RequestCtx, key string) lua.LValue {
 		return lua.S2L(ctx.LocalIP().String())
 	case "server_port":
 		return lua.LInt(xPort(ctx.LocalAddr()))
+
+	case "time":
+		return lua.S2L(ctx.Time().Format("2006-01-02 13:04:05.00"))
 
 	//请求信息
 	case "uri":

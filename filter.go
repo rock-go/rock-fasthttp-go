@@ -141,7 +141,7 @@ func newLuaFilter(L *lua.LState) int {
 		}
 	})
 
-	L.Push(L.NewLightUserData(f))
+	L.Push(L.NewAnyData(f))
 	return 1
 }
 
@@ -151,11 +151,11 @@ var (
 )
 
 func checkFilter(val lua.LValue) (*filter, error) {
-	if val.Type() != lua.LTLightUserData {
+	if val.Type() != lua.LTANYDATA{
 		return nil, invalidFilterType
 	}
 
-	f, ok := val.(*lua.LightUserData).Value.(*filter)
+	f, ok := val.(*lua.AnyData).Value.(*filter)
 	if !ok {
 		return nil, invalidFilterValue
 	}

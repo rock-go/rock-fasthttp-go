@@ -6,7 +6,7 @@ import (
 
 func (srv *server) Header(out lua.Printer) {
 	out.Printf("type: %s", srv.Type())
-	out.Printf("uptime: %s", srv.U.Format("2006-01-02 15:04:06"))
+	out.Printf("uptime: %s", srv.Uptime.Format("2006-01-02 15:04:06"))
 	out.Printf("version: v1.0.5")
 	out.Println("")
 }

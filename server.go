@@ -3,6 +3,7 @@ package fasthttp
 import (
 	"github.com/rock-go/rock/logger"
 	"github.com/rock-go/rock/lua"
+	"github.com/rock-go/rock/thread"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/reuseport"
 	"net"
@@ -25,17 +26,13 @@ type server struct {
 	//
 	accessFn func(*RequestCtx) []byte
 
-	//基础状态
-	uptime time.Time
+	vhost           *pool
 
-	//状态
-	stat lua.LightUserDataStatus
 }
 
 func newServer(cfg *config) *server {
-	srv := &server{cfg: cfg }
-	srv.S = lua.INIT
-	srv.T = fasthttpTypeOf
+	srv := &server{cfg: cfg ,vhost: newPool()}
+	srv.V(lua.INIT , fasthttpTypeOf)
 	return srv
 }
 
@@ -44,19 +41,22 @@ func (ser *server) Name() string {
 }
 
 func (ser *server) Close() error {
-	if ser.S == lua.CLOSE {
+	if ser.IsClose() {
 		return nil
 	}
+
+	logger.Errorf("%s fasthttp vhost clear" , ser.Name())
+
 	routerPool.clear(ser.cfg.router)
 	handlePool.clear(ser.cfg.handler)
 
 	if e := ser.fs.Shutdown(); e != nil {
 		logger.Errorf("%s fasthttp close error %v", ser.Name(), e)
-		ser.S = lua.PANIC
+		ser.V(lua.PANIC)
 		return e
 	}
 
-	ser.S = lua.CLOSE
+	ser.V(lua.CLOSE)
 	return nil
 }
 
@@ -84,8 +84,16 @@ func (ser *server) notFound(ctx *RequestCtx) {
 		ser.notFoundBody(ctx)
 		return
 	}
+	var r *vRouter
+	var err error
 
-	r, err := requireRouter(ser.cfg.router, ser.cfg.handler, ser.cfg.notFound)
+	item := ser.vhost.Get(ser.cfg.notFound)
+	if item != nil {
+		r = item.val.(*vRouter)
+		goto done
+	}
+
+	r, err = requireRouter(ser.cfg.router, ser.cfg.handler, ser.cfg.notFound)
 	if err != nil {
 		if os.IsNotExist(err) {
 			ser.notFoundBody(ctx)
@@ -94,6 +102,8 @@ func (ser *server) notFound(ctx *RequestCtx) {
 		ser.invalid(ctx, err)
 		return
 	}
+
+done:
 	r.r.Handler(ctx)
 
 }
@@ -174,8 +184,20 @@ func (ser *server) compile() {
 	ser.accessFn = compileAccessFormat(ser.cfg.accessFormat, ser.cfg.accessEncode)
 }
 
+
+func (ser *server) require(ctx *RequestCtx) (*vRouter , error) {
+	host := lua.B2S(ctx.Request.Header.Host())
+
+	item := ser.vhost.Get(host)
+	if item != nil {
+		return item.val.(*vRouter) , nil
+	}
+
+	return requireRouter(ser.cfg.router , ser.cfg.handler , host)
+}
+
 func (ser *server) Handler(ctx *RequestCtx) {
-	r, err := requireRouter(ser.cfg.router, ser.cfg.handler, lua.B2S(ctx.Host()))
+	r , err := ser.require(ctx)
 	//是否获取IP地址位置信息
 	ser.Region(r, ctx)
 
@@ -216,19 +238,7 @@ func (ser *server) Start() error {
 	ser.ln = ln
 	ser.compile()
 
-	//延时捕获异常
-	tk := time.NewTicker(1 * time.Second)
-	go func() {
-		err = ser.fs.Serve(ln)
-	}()
-	<-tk.C
+	thread.Spawn(2 , func() { err = ser.fs.Serve(ln) })
 
-	//处理异常
-	if err != nil {
-		ser.S = lua.PANIC
-		return err
-	}
-
-	ser.S = lua.RUNNING
 	return nil
 }

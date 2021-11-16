@@ -1,14 +1,13 @@
 package fasthttp
 
 import (
-	"database/sql"
 	"errors"
 	"github.com/rock-go/rock/lua"
 	"github.com/rock-go/rock/region"
 )
 
 var (
-	AccessFormat = "http_time,server_addr,server_port,remote_addr,host,path"
+	defaultAccessFormat = "time,server_addr,server_port,remote_addr,host,path,query,ua,referer,status,content-length,region_city"
 )
 
 type config struct {
@@ -33,14 +32,22 @@ type config struct {
 	accessRegionSdk *region.Region
 	accessOutputSdk lua.Writer
 
-	//database
-	db    *sql.DB
+
 	debug bool
 }
 
 func newConfig(L *lua.LState) *config {
 	tab := L.CheckTable(1)
-	cfg := &config{}
+	cfg := &config{
+		accessFormat: defaultAccessFormat,
+		accessEncode: "json",
+		accessRegion: "remote_addr",
+		readTimeout: 10,
+		idleTimeout: 10,
+		notFound: "*",
+		router: "router.d",
+		handler: "handle.d",
+	}
 
 	tab.ForEach(func(key lua.LValue, val lua.LValue) {
 		if key.Type() != lua.LTString {

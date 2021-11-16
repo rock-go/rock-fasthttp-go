@@ -49,9 +49,6 @@ func (pi *poolItem) clear() {
 type pool struct {
 	m sync.RWMutex
 	v []*poolItem
-
-	//访问速度最快的几个索引
-	f []int
 }
 
 func newPool() *pool {
@@ -125,6 +122,8 @@ done:
 
 func (p *pool) insert(key string, val PoolItemIFace) {
 	p.m.Lock()
+	defer p.m.Unlock()
+
 	n := p.Len()
 	var item *poolItem
 
@@ -133,7 +132,6 @@ func (p *pool) insert(key string, val PoolItemIFace) {
 		//字符串相等
 		if strings.EqualFold(item.key, key) {
 			item.val = val
-			p.m.Unlock()
 			return //覆盖 不需要排序
 		}
 
@@ -157,7 +155,6 @@ func (p *pool) insert(key string, val PoolItemIFace) {
 
 DONE:
 	sort.Sort(p)
-	p.m.Unlock()
 }
 
 func (p *pool) reset() {
@@ -175,7 +172,7 @@ func (p *pool) clear(prefix string) {
 	n := p.Len()
 	k := 0
 	for i := 0; i < n; i++ {
-		if strings.HasPrefix(p.v[i].key, prefix) {
+		if  strings.HasPrefix(p.v[i].key, prefix) {
 			logger.Errorf("clear %s ... ", p.v[i].key)
 			p.v[i].clear()
 			k++

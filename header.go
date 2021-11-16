@@ -106,7 +106,7 @@ func newLuaHeader(L *lua.LState) int {
 		}
 	})
 
-	L.Push(L.NewLightUserData(h))
+	L.Push(L.NewAnyData(h))
 	return 1
 }
 
@@ -116,11 +116,11 @@ var (
 )
 
 func checkHeader(val lua.LValue) (*header, error) {
-	if val.Type() != lua.LTLightUserData {
+	if val.Type() != lua.LTANYDATA {
 		return nil, invalidHeaderType
 	}
 
-	h, ok := val.(*lua.LightUserData).Value.(*header)
+	h, ok := val.(*lua.AnyData).Value.(*header)
 	if !ok {
 		return nil, invalidHeaderValue
 	}
